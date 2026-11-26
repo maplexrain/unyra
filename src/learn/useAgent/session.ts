@@ -23,6 +23,8 @@ export interface WorkRunSlot {
   conversationId: string
   workId: string
   runId: string
+  /** 这一轮 work 开始流式的时刻：实时消息行也拿它当时间戳，不用 MAX_SAFE_INTEGER 假值 */
+  ts: number
   parts: AgentPart[]
 }
 
@@ -115,6 +117,7 @@ export function useAgentSession(deps: {
               from,
               to,
               text,
+              ...(meta.auto ? { auto: true } : {}),
               ...(meta.extra ? { extra: meta.extra } : {}),
               ...(meta.delivery ? { delivery: meta.delivery } : {}),
             })
@@ -139,14 +142,7 @@ export function useAgentSession(deps: {
             )
           },
           onEvent: (workId, runId, e) => {
-            setWorkRuns((prev) => {
-              const cur = prev.find((r) => r.runId === runId)
-              const parts = cur ? [...cur.parts] : []
-              applyEvent(parts, e)
-              return cur
-                ? prev.map((r) => (r.runId === runId ? { ...r, parts } : r))
-                : [...prev, { conversationId, workId, runId, parts }]
-            })
+            setWorkRuns((prev) => workEventSlot(prev, conversationId, workId, runId, e))
           },
           onRunEnd: (_workId, runId) => {
             setWorkRuns((prev) => prev.filter((r) => r.runId !== runId))
@@ -209,6 +205,7 @@ export function useAgentSession(deps: {
               from,
               to,
               text,
+              ...(meta.auto ? { auto: true } : {}),
               ...(meta.delivery ? { delivery: meta.delivery } : {}),
             })
             // 与目标 role 同一条路径：通道落账 + 空闲立即起轮 / 运行中跳边界注入。
@@ -252,14 +249,7 @@ export function useAgentSession(deps: {
             }))
           },
           onEvent: (workId, runId, e) => {
-            setWorkRuns((prev) => {
-              const cur = prev.find((r) => r.runId === runId)
-              const parts = cur ? [...cur.parts] : []
-              applyEvent(parts, e)
-              return cur
-                ? prev.map((r) => (r.runId === runId ? { ...r, parts } : r))
-                : [...prev, { conversationId, workId, runId, parts }]
-            })
+            setWorkRuns((prev) => workEventSlot(prev, conversationId, workId, runId, e))
           },
           onRunEnd: (_workId, runId) => {
             setWorkRuns((prev) => prev.filter((r) => r.runId !== runId))
@@ -288,5 +278,5 @@ export function workEventSlot(
   applyEvent(parts, e)
   return cur
     ? prev.map((r) => (r.runId === runId ? { ...r, parts } : r))
-    : [...prev, { conversationId, workId, runId, parts }]
+    : [...prev, { conversationId, workId, runId, ts: Date.now(), parts }]
 }

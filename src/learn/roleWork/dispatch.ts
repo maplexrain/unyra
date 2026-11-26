@@ -8,6 +8,7 @@
 import type { AgentProfileId } from '../../agent/agentProfile'
 import type { ChannelMessage, ChannelStamp, ConversationMessage } from '../../agent/types'
 import { channelTextOf } from './channels'
+import { splitChatText } from '../../lib/chatText'
 
 export interface RoleTurnRequest {
   conversationId: string
@@ -101,9 +102,13 @@ export function deliverInbound(
   const host = dispatcherOf()
   if (!host) return false
   host.appendChannel(req.conversationId, envelope)
-  // 双层汇报：界面默认只显示外层，但模型需要看到内层细节，否则拿到的是残缺上下文。
-  const turnReq: RoleTurnRequest = envelope.detail
-    ? { ...req, text: `${req.text}\n\n【详细汇报】\n${envelope.detail}` }
+  // 双层正文：界面默认只显示分隔线前的短句，但模型需要看到详细段，否则上下文是残缺的。
+  const envelopeParts = splitChatText(envelope.text)
+  const reqParts = splitChatText(req.text)
+  const turnReq: RoleTurnRequest = envelopeParts.detail
+    ? reqParts.detail
+      ? { ...req, text: `${reqParts.brief}\n\n【详细汇报】\n${reqParts.detail}` }
+      : { ...req, text: `${req.text}\n\n【详细汇报】\n${envelopeParts.detail}` }
     : req
   if (opts?.silent) {
     // 目标正在跑：先挂起，等这一轮收口后由 flushChannelInbox 只写上下文，绝不插队起轮。

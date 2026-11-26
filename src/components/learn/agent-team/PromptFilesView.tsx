@@ -95,6 +95,9 @@ export function PromptFilesView({
     const idx = files.findIndex((file) => file.id === id)
     const next = idx + delta
     if (idx < 0 || next < 0 || next >= files.length) return
+    if (files[idx]?.pinned) return
+    // 置顶的基座段之前不许插队：移动只在非置顶区内进行
+    if (files[next]?.pinned) return
     const ordered = [...files]
     const [row] = ordered.splice(idx, 1)
     if (!row) return
@@ -103,6 +106,7 @@ export function PromptFilesView({
   }
 
   const toggle = (id: string) => {
+    if (files.find((file) => file.id === id)?.pinned) return
     const next = disabled.includes(id) ? disabled.filter((x) => x !== id) : [...disabled, id]
     onChange(withDisabled(settings, agentId, layer, next))
   }
@@ -326,7 +330,7 @@ export function PromptFilesView({
               {file.builtin ? t(file.name) : file.name}
             </span>
             <span className="inline-flex shrink-0 items-center rounded bg-line/55 px-1.5 py-px text-[10px] text-ink-faint">
-              {file.builtin ? t('内置') : scopeBadge(file.scope)}
+              {file.pinned ? t('基座 · 置顶') : file.builtin ? t('内置') : scopeBadge(file.scope)}
             </span>
             <span
               data-prompt-file-chars
@@ -335,41 +339,45 @@ export function PromptFilesView({
             >
               {t('{0} 字符', file.content.length)}
             </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                move(file.id, -1)
-              }}
-              disabled={idx === 0}
-              className="rounded p-0.5 text-ink-faint hover:bg-line/40 disabled:opacity-25"
-              title={t('上移')}
-            >
-              <ArrowUp size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                move(file.id, 1)
-              }}
-              disabled={idx === files.length - 1}
-              className="rounded p-0.5 text-ink-faint hover:bg-line/40 disabled:opacity-25"
-              title={t('下移')}
-            >
-              <ArrowDown size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                toggle(file.id)
-              }}
-              className={`rounded p-0.5 hover:bg-line/40 ${file.enabled ? 'text-ink-soft' : 'text-ink-faint'}`}
-              title={file.enabled ? t('停用') : t('启用')}
-            >
-              {file.enabled ? <Eye size={13} /> : <EyeOff size={13} />}
-            </button>
+            {!file.pinned && (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    move(file.id, -1)
+                  }}
+                  disabled={idx === 0}
+                  className="rounded p-0.5 text-ink-faint hover:bg-line/40 disabled:opacity-25"
+                  title={t('上移')}
+                >
+                  <ArrowUp size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    move(file.id, 1)
+                  }}
+                  disabled={idx === files.length - 1}
+                  className="rounded p-0.5 text-ink-faint hover:bg-line/40 disabled:opacity-25"
+                  title={t('下移')}
+                >
+                  <ArrowDown size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    toggle(file.id)
+                  }}
+                  className={`rounded p-0.5 hover:bg-line/40 ${file.enabled ? 'text-ink-soft' : 'text-ink-faint'}`}
+                  title={file.enabled ? t('停用') : t('启用')}
+                >
+                  {file.enabled ? <Eye size={13} /> : <EyeOff size={13} />}
+                </button>
+              </>
+            )}
             {!file.builtin && (
               <button
                 type="button"

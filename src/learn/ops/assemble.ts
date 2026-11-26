@@ -168,7 +168,8 @@ export function createAgentOps(deps: AgentOpsDeps): AgentOps {
     // 引用 chip：生成与交付前自查——build 当场对 store 验证可定位（见 learn/ops/chip）
     chip: createChipOps(deps),
     video: createVideoOps(deps),
-    // role-work：role 的 work / chat 面，work 的 host 面（由宿主按层注入）
+    // role-work：role 的 agent / work / chat 面，work 的 host 面（由宿主按层注入）
+    ...(deps.agent ? { agent: deps.agent } : {}),
     ...(deps.work ? { work: deps.work } : {}),
     ...(deps.chat ? { chat: deps.chat } : {}),
     ...(deps.host ? { host: deps.host } : {}),

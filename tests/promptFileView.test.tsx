@@ -72,6 +72,16 @@ describe('PromptFileView', () => {
     expect(host.querySelector('[data-prompt-preview-body]')?.className).toContain(
       'moji-selectable',
     )
+    const outlineItems = host.querySelectorAll('[data-prompt-outline-item]')
+    expect(outlineItems.length).toBeGreaterThan(1)
+    expect(host.querySelectorAll('[data-prompt-block]').length).toBe(outlineItems.length)
+    expect(host.querySelector('[data-prompt-outline]')?.textContent).toContain('目录')
+
+    act(() => {
+      (outlineItems[1] as HTMLButtonElement).click()
+    })
+    expect(outlineItems[1]?.getAttribute('aria-current')).toBe('true')
+
     expect(host.querySelector('[data-prompt-back]')).not.toBeNull()
     expect(host.querySelector('[data-prompt-actions]')?.className).toContain('ml-auto')
 

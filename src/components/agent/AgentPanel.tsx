@@ -51,7 +51,7 @@ import { focusAgentInput } from '../../lib/agentFocus'
 interface WorkView {
   sessions: WorkSession[]
   running: boolean
-  live: Array<{ workId: string; runId: string; parts: AgentPart[] }>
+  live: Array<{ workId: string; runId: string; ts: number; parts: AgentPart[] }>
 }
 
 interface Props {
@@ -307,7 +307,7 @@ export default function AgentPanel({
     const rows: WorkTimelineMessage[] = (work?.sessions ?? []).flatMap((session) =>
       session.messages
         .filter((m) => !m.hidden)
-        .map((m) => ({ m, work: { id: session.id, name: session.name } })),
+        .map((m, order) => ({ m, workId: session.id, workName: session.name, ts: m.ts, order })),
     )
     // 正在跑的 work 还没有落库的增量输出：挂在时间线末尾，仍用同一条 work 标识。
     for (const live of work?.live ?? []) {
@@ -317,10 +317,13 @@ export default function AgentPanel({
         m: {
           id: `live:${live.workId}:${live.runId}`,
           role: 'assistant',
-          ts: Number.MAX_SAFE_INTEGER,
+          ts: live.ts,
           parts: live.parts,
         },
-        work: { id: session.id, name: session.name },
+        workId: session.id,
+        workName: session.name,
+        ts: live.ts,
+        order: session.messages.length,
       })
     }
     return rows
@@ -380,6 +383,7 @@ export default function AgentPanel({
     jumpToMessage,
     restoreFollow,
     stickToBottom,
+    stickToBottomIfNear,
     flashId,
     chatScale,
     zoomPct,
@@ -414,10 +418,24 @@ export default function AgentPanel({
    *
    * 依赖里除了条数，还有 messages 本身（编辑一条消息、压缩之后换了一整份列表，
    * 条数可能没变但高度变了）——只认条数会漏掉这些「不增不减、只是变高」的改动。
+   *
+   * 新增消息另有一条更宽的判据：即使已经脱离跟随，只要当前视口离底部 ≤400px，
+   * 也主动落底（见 useScrollFollow 的 stickToBottomIfNear）。work 消息也混在同一条
+   * 时间线里，所以两个来源的条数都要看。
    */
+  const lastTimelineCountRef = useRef({
+    role: messages.reduce((n, m) => n + (m.hidden ? 0 : 1), 0),
+    work: workMessages.length,
+  })
   useEffect(() => {
-    stickToBottom()
-  }, [stickToBottom, messages, streaming, running, workMessages])
+    // 隐藏的提示词注入也会进 messages，但它们不上屏；只把可见行算作「新消息」。
+    const roleCount = messages.reduce((n, m) => n + (m.hidden ? 0 : 1), 0)
+    const prev = lastTimelineCountRef.current
+    const grew = roleCount > prev.role || workMessages.length > prev.work
+    lastTimelineCountRef.current = { role: roleCount, work: workMessages.length }
+    if (grew) stickToBottomIfNear()
+    else stickToBottom()
+  }, [stickToBottom, stickToBottomIfNear, messages, streaming, running, workMessages])
 
   // 定位条排在后面：它的 useLayoutEffect 与上面那个「贴底」谁先跑与拆分前一致（见各自注释）
   const { anchors, measureAnchors } = useMsgRail(
@@ -562,8 +580,8 @@ export default function AgentPanel({
 
   return (
     // relative：定位条贴着这一块的右边挂（它要的是整块面板的坐标，不是消息列的）
-    <div ref={rootRef} className="relative flex h-full min-h-0 flex-col bg-paper-deep/40">
-      <div className="flex shrink-0 items-center gap-1 border-b border-line/60 px-3 py-1.5">
+    <div ref={rootRef} className="relative flex h-full min-h-0 flex-col bg-card/45">
+      <div className="flex shrink-0 items-center gap-1 px-3 py-1.5">
         {(['chat', 'mind'] as const).map((m) => (
           <button
             key={m}
@@ -607,7 +625,7 @@ export default function AgentPanel({
             onWheel={onWheel}
             onScroll={onScroll}
             // 不显示滚动条（moji-scroll-none），左右内边距对称
-            className="moji-scroll-none moji-selectable h-full overflow-y-auto bg-card/45 pb-3 px-3.5"
+            className="moji-scroll-none moji-selectable h-full overflow-y-auto bg-transparent pb-3 px-3.5"
           >
             {/* 字号系数挂在这一层、而不是滚动容器上：滚动条与内边距不该跟着缩放（上边距 20px：列表内容与页签栏之间留一口呼吸） */}
             <div

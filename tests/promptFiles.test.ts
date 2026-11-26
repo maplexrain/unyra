@@ -1,7 +1,7 @@
 /**
  * 提示词文件：归一化、内外文件顺序、启停与运行时装配。
  *
- * 外置文件的内容住在 prompts/ 与 agents/<id>/prompts/ 的 md 里（由 promptFileStore 扫描），
+ * 外置文件的内容住在 prompts/ 与 agents/<id>/prompts/ 的 xml（兼容旧 md）里（由 promptFileStore 扫描），
  * 这里把 store 换成一份内存里的假文件库，验证「显式选择加入 + 按层编排」。
  */
 import { describe, expect, it, vi } from 'vitest'
@@ -77,16 +77,24 @@ describe('提示词文件装配', () => {
     expect(buildPromptFileSystem('tutor', 'role', DEFAULT_PROMPT_FILE_SETTINGS)).not.toContain('EXTERNAL-CONTENT')
   })
 
-  it('role 层按用户顺序注入已加入的外置文件，停用的内置项不参与拼接', () => {
+  it('role 层按用户顺序注入已加入的外置文件；基座段置顶且不可停用', () => {
     const builtin = listPromptFiles('tutor', 'role', DEFAULT_PROMPT_FILE_SETTINGS)
+    const base = builtin.find((file) => file.pinned)!
+    expect(base).toMatchObject({ id: 'tutor-base', enabled: true, pinned: true })
     const settings = normalizePromptFileSettings({
       order: { tutor: { role: ['ext:补充规范.md'] } },
-      disabled: { tutor: { role: builtin.filter((file) => file.builtin).map((file) => file.id) } },
+      disabled: {
+        tutor: {
+          role: builtin.filter((file) => file.builtin && !file.pinned).map((file) => file.id).concat(base.id),
+        },
+      },
     })
-    expect(buildPromptFileSystem('tutor', 'role', settings)).toBe('EXTERNAL-CONTENT')
-    expect(listPromptFiles('tutor', 'role', settings)[0]).toMatchObject({
+    expect(buildPromptFileSystem('tutor', 'role', settings)).toBe(`${base.content}\n\nEXTERNAL-CONTENT`)
+    const listed = listPromptFiles('tutor', 'role', settings)
+    expect(listed[0]).toMatchObject({ id: 'tutor-base', pinned: true, enabled: true })
+    expect(listed[1]).toMatchObject({
       id: 'ext:补充规范.md',
-      order: 1,
+      order: 2,
       enabled: true,
       builtin: false,
       fileName: '补充规范.md',

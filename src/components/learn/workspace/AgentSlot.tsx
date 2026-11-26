@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Bot, GraduationCap } from 'lucide-react'
-import type { AgentTabRef, DocView, LearnStore, TabRef } from '../../../learn/types'
+import type { AgentTabRef } from '../../../learn/types'
 import { agentTabKey } from '../../../learn/agentTabs'
 import { queueOf } from '../../../learn/agentQueue'
 import {
@@ -10,7 +10,7 @@ import {
 } from '../../../learn/freeChat'
 import { conversationById, deleteMessage, nodeById, resolveDisplayedConversation, updateMessageText } from '../../../learn/graph'
 import { resetPrefixGate } from '../../../agent/prefixGate'
-import { saveAgentSettings, loadAgentSettings } from '../../../agent/settings'
+import { saveAgentSettings } from '../../../agent/settings'
 import {
   agentTeamTabIdOf,
   openAgentSettingsTab,
@@ -21,7 +21,6 @@ import { personaOf } from '../../../agent/persona'
 import { docFormatOf } from '../../../agent/docFormat'
 import type { AgentPart, ChannelStamp, Conversation, PendingFile, PendingImage } from '../../../agent/types'
 import type { AskAnswers } from '../../../agent/tools'
-import type { ReasoningEffort } from '../../../ai/types'
 import { userAbsPath } from '../../../lib/storage'
 import { focusAgentInput } from '../../../lib/agentFocus'
 import { wsChipUserRel } from '../../../learn/chipRef'
@@ -33,6 +32,7 @@ import { AgentRosterSidebar } from '../agent-team/AgentRosterSidebar'
 import { AgentSettingsView } from '../agent-team/AgentSettingsView'
 import {
   agentAvatarIdOf,
+  bioOf,
   DEFAULT_AGENT_NAME,
   profileOf,
   resetAgentProfile,
@@ -58,60 +58,14 @@ import {
   sortConversationsByTimeDesc,
   type AgentTeamMode,
 } from '../agent-team/conversationList'
-import type { useAgent } from '../../../learn/useAgent'
-import type { useWorkflowStarters } from './useWorkflowStarters'
+import type { AgentSlotDeps } from './agentSlotDeps'
 import { t } from '../../../i18n'
 
-type AgentApi = ReturnType<typeof useAgent>
-type StartersApi = ReturnType<typeof useWorkflowStarters>
-type AgentSettings = ReturnType<typeof loadAgentSettings>
+export type { AgentSlotDeps } from './agentSlotDeps'
+
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_WF_ROWS: WorkflowRow[] = []
-const EMPTY_WORK_RUNS: Array<{ conversationId: string; workId: string; runId: string; parts: AgentPart[] }> = []
-
-/**
- * agent 栏（左侧 Agent 列表——上块声部名册 + 下块当前声部对话历史 + 中间 keepalive 面板）需要的宿主能力与派生值。
- */
-export interface AgentSlotDeps {
-  store: LearnStore
-  getLatest: () => LearnStore
-  set: (s: LearnStore) => void
-  agent: AgentApi
-  /** 仅聊天模式的会话列表（learn/freeChat） */
-  freeChats: Conversation[]
-  currentFreeConvId: string | null
-  setFreeConvId: Dispatch<SetStateAction<string | null>>
-  onToast: (msg: string) => void
-  openTab: (ref: TabRef, preferredView?: DocView) => void
-  effort: ReasoningEffort
-  setGlobalEffort: (next: ReasoningEffort) => void
-  hasKey: boolean
-  providerName: string
-  vision: boolean
-  agentSettings: AgentSettings
-  setSettingsEpoch: Dispatch<SetStateAction<number>>
-  /** 常挂面板的列表 = 全部页签 */
-  agentPanes: AgentTabRef[]
-  activeAgentTab: AgentTabRef
-  activeAgentTabId: string | null
-  activateAgentTab: (key: string) => void
-  openAgentTab: (ref: AgentTabRef, activate?: boolean) => void
-  selectTutorGoal: (goalId: string) => void
-  handleNewGoalConversation?: (goalId?: string) => void
-  removeConversation: (conversationId: string) => void
-  newConversationIn?: (tab: AgentTabRef) => void
-  selectConversationIn: (tab: AgentTabRef, conversationId: string) => void
-  pruneImagesOf: (s: LearnStore) => void
-  startSuperLab: StartersApi['startSuperLab']
-  newExam: StartersApi['newExam']
-  shouldWaitInLine: (convId: string) => boolean
-  /** 宿主 Tab 页签是否当前可见（agentTeam 页签后台保活时降为 false，切回再激活） */
-  tabActive?: boolean
-  /** 若由目标专属智能体团队页签挂载，则固定绑定到该目标（仅聊天仍跨目标共享） */
-  tabGoalId?: string
-  /** 是否将左右侧栏折叠状态持久化到 localStorage（传送窗格中置为 false，避免影响原页签） */
-  persistLayout?: boolean
-}
+const EMPTY_WORK_RUNS: Array<{ conversationId: string; workId: string; runId: string; ts: number; parts: AgentPart[] }> = []
 
 /**
  * 智能体团队两栏工作台：
@@ -462,11 +416,15 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     [agentSettings],
   )
 
-  /** 各声部的简介（profile.bio）：名册副标题优先显示它 */
+  /** 各声部的简介（用户旧 bio 优先，否则用内置简介）：名册副标题显示它 */
   const agentBios = useMemo(
-    () => Object.fromEntries(AGENT_ROSTER_ORDER.map((v) => [v, profileOf(agentSettings, v).bio ?? ''])),
+    () =>
+      Object.fromEntries(
+        AGENT_ROSTER_ORDER.map((v) => [v, bioOf(profileOf(agentSettings, v), v)]),
+      ),
     [agentSettings],
-  )  /** 群聊成员：有目标上下文的 role（不含仅聊天的 free；群聊消息最终要落到目标级 role 会话） */
+  )
+  /** 群聊成员：有目标上下文的 role（不含仅聊天的 free；群聊消息最终要落到目标级 role 会话） */
   const groupAgents = useMemo(
     () => groupAgentsOf({ agentNames, agentAvatarIds, voiceStats }),
     [agentAvatarIds, agentNames, voiceStats],
@@ -690,7 +648,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         running: workRunsAll.some((r) => r.conversationId === convId),
         live: workRunsAll
           .filter((r) => r.conversationId === convId)
-          .map(({ workId, runId, parts }) => ({ workId, runId, parts })),
+          .map(({ workId, runId, ts, parts }) => ({ workId, runId, ts, parts })),
       },
       viewWorkId: work?.id ?? null,
       onStopWork: (wid: string) => {
@@ -899,7 +857,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
 
         <div className={showCenterPane && !emptyVoiceActive ? 'relative min-h-0 flex-1' : 'hidden'}>
           {groupOpen ? (
-            <div className="absolute inset-0 z-10 overflow-hidden bg-paper-deep/40">
+            <div className="absolute inset-0 z-10 overflow-hidden bg-card/45">
               <GroupChatPanel
                 messages={groupMessagesForGoal}
                 agents={groupAgents}

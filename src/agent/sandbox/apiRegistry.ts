@@ -561,6 +561,17 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
   ),
 
   g(
+    'agent',
+    '智能体名录',
+    'role 共用：api.agent.list() 只读查询已注册 agent 的 id / 名称 / 简介。',
+    `想知道团队里有哪些 agent、各自负责什么时先 list；返回内置六位、自由对话与外部 agent。
+只读：不能改名、不能新建或删除 agent。`,
+    [
+      a('list', 'api.agent.list()', '列出已注册的智能体', '回 { agents: [{ id, name, bio }], count }；内置在前、外部在后。', `const { agents } = await api.agent.list()`),
+    ],
+  ),
+
+  g(
     'work',
     '工作会话',
     'role 专属：list / status / stop / create / kill / send。把重活派给独立的 work 会话，role 只负责接口与交付。',
@@ -585,7 +596,7 @@ status 只回执行轨迹的 execute 标题，不回工具参数与正文；要�
     'role 专属：chat.send 把对话发到用户 / Agent / Work / 群聊通道，可带附件；group 的 @ 只抄送上下文，mention 才是唯一激活开关。',
     `role 的所有外部消息都经通道：user（用户私聊）、agent（其他 role 私聊）、group（群聊）、work（自己的 work）。
 每条入站消息由宿主标注来源与时间戳；chat.send 的 text 是**对外说的话**，不是思维过程。
-**双层汇报**：text 写短、口语化的结论或进度；detail 放依据、清单、过程与下一步。聊天界面默认只显示 text，接收方可以展开到 detail；发给 work 时 detail 会并入任务正文。普通寒暄或一句话回复不需要 detail。
+**简短 / 详细同段**：交付物完成通知可在 text 里用单独一行 \`---\` 分隔：前面一句话口语化完成通知，后面写具体改动、索引名 / 标识符、专业术语与核验过程。聊天界面默认只显示分隔线前，用户可展开详细。只有用户目的是拿到额外交付物时才用；普通问答、寒暄、进度同步不要用；发给 work 时完整正文一起交给 work。
 **回复必须从最近一条入站消息的 channel 回去**：user 回 user；agent 回 agent（to=目标 role id）；group 回 group。
 群聊里 **@ 不再激活任何 agent**：正文里可以 @ 多位（只 @ 本次确实参与过的人，不要广播），@ 只把消息抄进被 @ 者的上下文。
 **要激活某位 role，必须传唯一的 \`mention: "<role id>"\`**，而且目标必须同时被正文 \`@名字 \` 点到；一条消息只能有一个 mention，被 mention 的 agent 会启动一轮。
@@ -596,7 +607,7 @@ chat.send 到 work 通道等价于 work.send；到 user 通道不写 to。
 chat.send 成功会回 \`{ ok:true, channel, id, to?, mention? }\`；看到 ok:true 后**禁止重复发送同一条消息**，失败才按 error 修正。
 大段结果（调研原文、日志、JSON）放 \`extra:{title,text}\`，不要塞进正文刷屏；用户可点开查看。`,
     [
-      a('send', 'api.chat.send({ channel, to?, mentions?, mention?, text, detail?, messageId?, deliveryFrom?, attachments?, extra?, silent? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 里 to 兼容为唯一 mention，mentions 是抄送名单（可多位，正文必须逐个写 \`@名字 \`，名字后留一个空格）；真正激活某位 role 用 mention="role id"（只能一个，且正文必须 @ 同一个名字）；**正文只 @用户、不指定 to / mentions / mention 时不投递给任何 role，用于把最终结论直接汇报给用户**；silent:true 只允许 agent / group，只入上下文、不激活目标，不能带 mention；detail 是内层详细汇报，默认不显示，接收方可展开；发给 work 时并入任务正文；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（通道抬头 id: 后面的信封 id 也算）；deliveryFrom 按消息 id 转发一条 Work / 通道消息的交付账。extra={title?,text,format?} 放正文之外的日志 / 原始结果 / 长 JSON，界面折叠展示。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role，mention 是实际激活的目标。', `await api.chat.send({ channel: "group", mention: "researcher", text: "@调研龟 三条来源已经核过，结论在详细里。", detail: "1. 官网原文支持……\\n2. 第二条来源与官方口径冲突……\\n3. 引用位置：……", extra: { title: "待查来源", text: sourceList } })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道。@ 只是抄送、不会启动对方，要激活必须带唯一 mention。silent 不是「不发送」：它只入上下文、不激活目标，普通回复别用。' }),
+      a('send', 'api.chat.send({ channel, to?, mentions?, mention?, text, messageId?, deliveryFrom?, attachments?, extra?, silent? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 里 to 兼容为唯一 mention，mentions 是抄送名单（可多位，正文必须逐个写 \`@名字 \`，名字后留一个空格）；真正激活某位 role 用 mention="role id"（只能一个，且正文必须 @ 同一个名字）；**正文只 @用户、不指定 to / mentions / mention 时不投递给任何 role，用于把最终结论直接汇报给用户**；silent:true 只允许 agent / group，只入上下文、不激活目标，不能带 mention；text 是唯一正文，交付物完成通知可用单独一行 `---` 分隔：前面一句话口语化完成通知，后面放具体改动 / 索引名 / 标识符 / 专业细节，界面默认只显示短句、用户可展开；普通对话不要用该分隔；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（通道抬头 id: 后面的信封 id 也算）；deliveryFrom 按消息 id 转发一条 Work / 通道消息的交付账。extra={title?,text,format?} 放正文之外的日志 / 原始结果 / 长 JSON，界面折叠展示。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role，mention 是实际激活的目标。', `await api.chat.send({ channel: "group", mention: "researcher", text: "@调研龟 三条来源已经核过。\\n---\\n1. 官网原文支持……\\n2. 第二条来源与官方口径冲突……\\n3. 引用位置：……", extra: { title: "待查来源", text: sourceList } })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道。@ 只是抄送、不会启动对方，要激活必须带唯一 mention。silent 不是「不发送」：它只入上下文、不激活目标，普通回复别用。`---` 只用于交付物完成通知，不要把普通回答的结论藏进详细段。' }),
     ],
   ),
 

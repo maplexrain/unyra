@@ -465,9 +465,9 @@ export function GroupChatPanel({
     setMenu({ x: e.clientX, y: e.clientY, message: m, allowComment: canCommentOf(m) })
   }
 
-  /** 复制正文与详细层：两者都带上，粘出去才是完整的一条消息 */
+  /** 复制完整正文：分隔线前后都带上，粘出去才是完整的一条消息 */
   const copyMessage = async (m: ChannelMessage): Promise<void> => {
-    const body = [m.text, m.detail].filter((x) => x && x.trim()).join('\n\n')
+    const body = m.text.trim()
     if (!body) return
     try {
       await navigator.clipboard.writeText(body)
@@ -507,7 +507,7 @@ export function GroupChatPanel({
     <div className="flex h-full min-h-0 flex-col">
       <div
         data-group-chat-header
-        className="flex shrink-0 items-center gap-2 border-b border-line/60 px-4 py-3"
+        className="flex shrink-0 items-center gap-2 px-4 py-3"
       >
         {threadRoot ? (
           <>
@@ -559,7 +559,7 @@ export function GroupChatPanel({
           data-message-scroll
           onWheel={onWheel}
           onScroll={onScroll}
-          className="h-full overflow-y-auto bg-card/45"
+          className="h-full overflow-y-auto bg-transparent"
         >
         <div ref={contentRef} className="flex min-h-full flex-col px-4 py-4">
         {rendered.length ? (
@@ -599,7 +599,7 @@ export function GroupChatPanel({
               const hasMedia = Boolean(
                 m.attachments?.images?.length || (m.attachments?.files ?? []).some((f) => isVideoFile(f)),
               )
-              const bubbleVisible = Boolean(m.text.trim() || m.detail || hasMedia || m.delivery || commentEntry)
+              const bubbleVisible = Boolean(m.text.trim() || hasMedia || m.delivery || commentEntry)
               const mentions = Array.from(
                 new Set([
                   ...(m.mentions?.map((p) => agents.find((a) => a.id === p.id)?.name || p.name) ?? []),
@@ -713,7 +713,6 @@ export function GroupChatPanel({
                         />
                         <BubbleBody
                           text={m.text}
-                          detail={m.detail}
                           names={mentionNames}
                           labels={{ 用户: userName }}
                           tone={mine ? 'user' : 'agent'}
@@ -805,7 +804,10 @@ export function GroupChatPanel({
               )}
             </div>
           ) : null}
-          <div className="rounded-2xl border border-line bg-card shadow-sm transition focus-within:border-seal/50 focus-within:ring-2 focus-within:ring-seal/10">
+          <div
+            data-group-composer
+            className="rounded-2xl border border-line bg-transparent shadow-sm transition focus-within:border-seal/50 focus-within:ring-2 focus-within:ring-seal/10"
+          >
             <GroupComposerAttachments
               images={attach.images}
               files={attach.files}

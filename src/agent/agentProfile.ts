@@ -124,12 +124,28 @@ export const DEFAULT_AGENT_AVATAR: Record<AgentProfileId, string> = {
   fixer: 'turtle-fixer',
 }
 
+/** 内置智能体简介（设置页只读、名册副标题、api.agent.list 三处共用同一份文案） */
+export const DEFAULT_AGENT_BIO: Record<AgentProfileId, string> = {
+  free: '不挂目标的单人对话：直接聊天、查资料、做一次性任务，不推进学习目标。',
+  tutor: '教学主线的主讲与协调者：带学习目标、讲知识、分诊需求，再派给合适的 role 或 work。',
+  dispatcher: '任务入口与调度中心：接住用户需求，用 chat 对齐、用 work 派活，最后汇总交付。',
+  examiner: '出卷、阅卷与错题讲解：按目标进度安排练习，盯住薄弱点反复练。',
+  designer: '互动课堂与超级实验室：把抽象知识做成可操作、可观察的课件与实验。',
+  researcher: '联网调研与浏览器实操：找资料、核事实、对比来源，最后给出可引用的结论。',
+  fixer: '内容修复师：定位函数图像与内容语法的解析失败，修到能正常渲染。',
+}
+
+/** 某位内置智能体的有效简介：用户旧数据里的 bio 优先，否则用默认简介 */
+export function bioOf(profile: AgentProfile | undefined, agentId: AgentProfileId): string {
+  return profile?.bio?.trim() || DEFAULT_AGENT_BIO[agentId]
+}
+
 /* ---------- 团队分工：api 能力面 ---------- */
 
 /**
  * **work 层的领域能力面**：role 只负责沟通与调度，领域执行能力全部下沉到 work。
  * 这里保留原有分工表，作为 `workPlaneOfRole` 的输入；role 自己的 `AGENT_API_PLANES`
- * 不再读取它（role 只有固定的 work/chat/tmp/compact）。
+ * 不再读取它（role 只有固定的 work/chat/tmp/agent/compact）。
  *
  * 分配原则：
  * - core 顶层原语（wait / ask / tiktok / compact / fetch / see）按需给：ask / see 给
@@ -189,12 +205,12 @@ export const WORK_DOMAIN_PLANES: Record<AgentVoice, AgentApiPlane> = {
 }
 
 /**
- * **role 层能力面**：六位团队 role 只保留「对外沟通 + 对内调度」所需的固定面。
+ * role 层能力面：六位团队 role 只保留「对外沟通 + 对内调度」所需的固定面。
  * 领域组（node / exam / classroom / web / browser / files …）全部只在 work 面出现；
  * role 不需要 `wait`（loop 不阻塞），也不需要 `ask`（问用户用 chat.send 一句话即可，
- * 不把当前 loop 挂住）。`help` 恒在场，渲染时单独补。
+ * 不把当前 loop 挂住）。`help` 恒在场，渲染时单独补；`agent` 只提供只读名录。
  */
-export const ROLE_FIXED_GROUPS = ['tmp', 'work', 'chat'] as const
+export const ROLE_FIXED_GROUPS = ['tmp', 'work', 'chat', 'agent'] as const
 /** role 固定顶层：只留上下文压缩交接；wait/ask/tiktok/fetch/see 全部只在 work 面 */
 export const ROLE_FIXED_TOP_LEVEL = ['compact'] as const
 
@@ -280,7 +296,7 @@ export function workRuntimeApiAllow(role: AgentProfileId): string[] {
  * **固定能力面**：六位挂目标 role**逐位都持有**的 api 组与顶层函数（AGENT_API_PLANES 求交）。
  * 它是「固定组 / 非固定组」这条分线的唯一口径，设置页的 execute 清单与系统提示词的
  * api 速查都从这里取：
- * - 固定组 = role 协作基座（tmp / work / chat）+ 人人都有的执行控制（wait / compact；help 恒在场，
+ * - 固定组 = role 协作基座（tmp / work / chat / agent）+ 人人都有的执行控制（wait / compact；help 恒在场，
  *   渲染时单独补，不算交集成员）；
  * - 非固定组 = 其余按职责分配的域（node / exam / classroom / browser …）。
  *
@@ -428,9 +444,9 @@ export function resolveAgentGlobal(
 }
 
 /**
- * 仅聊天 role 的沙箱基座：work / chat / tmp，加上顶层 compact；领域与联网能力全在 work。
+ * 仅聊天 role 的沙箱基座：work / chat / agent / tmp，加上顶层 compact；领域与联网能力全在 work。
  * 能力面同样由架构固定、不可增删。
  */
-export const FREE_AGENT_GROUPS = ['tmp', 'work', 'chat'] as const
+export const FREE_AGENT_GROUPS = ['tmp', 'work', 'chat', 'agent'] as const
 export const FREE_AGENT_TOP_LEVEL = ['compact'] as const
-export const FREE_AGENT_API_ITEMS = ['work', 'chat'] as const
+export const FREE_AGENT_API_ITEMS = ['work', 'chat', 'agent'] as const

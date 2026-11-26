@@ -390,6 +390,8 @@ export async function apiNameTests() {
     'design.component.register': "{ name: '探针组件', description: '探针' }",
     'design.component.update': "{ id: 'probe-component', description: '探针' }",
     'design.component.delete': "'probe-component'",
+    // 智能体名录：role 共用的只读 list（内置 + 外部 agent 的 id / 名称 / 简介）
+    'agent.list': '',
     // role-work：role 的 work.* / chat.*，work 的 host.*（宿主桩在 createAgentOps 里）
     'work.list': '',
     'work.status': "'调研-1'",
@@ -471,6 +473,12 @@ export async function apiNameTests() {
     // 无派发器时 delegate / status 的优雅拒绝与空状态本身就是断言对象
     teamFrom: () => ({ conversationId: 'probe-conv', agent: 'tutor', goalId }),
     // role-work 三组：工作层不在探针里真跑，只给最小宿主桩证明注册路径在
+    agent: {
+      list: () => [
+        { id: 'tutor', name: '导师龟', bio: '探针简介' },
+        { id: 'dispatcher', name: '经理龟', bio: '探针简介' },
+      ],
+    },
     work: {
       list: () => [],
       status: () => ({ error: '探针里没有 work 会话' }),

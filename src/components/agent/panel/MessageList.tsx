@@ -60,8 +60,21 @@ export interface MessageListProps {
   resetKey?: string
 }
 
-/** 思维列表里的一条 work 消息；work 元信息只影响显示，不进入上下文 */
+/**
+ * 思维列表里的一条 work 消息。
+ *
+ * 它和 role 消息共用同一条时间线，所以「这是哪条 work 的消息」必须跟着每条 item 走，
+ * 不能靠外层一个连续 work 块来隐式绑定；ts 是消息本身的原始时间戳，order 是同一条
+ * work 内的会话序号，时间线用二者推出不倒退的排序位置（见 useMessageList）。
+ */
 export interface WorkTimelineMessage {
   m: ConversationMessage
-  work: { id: string; name: string }
+  workId: string
+  workName: string
+  ts: number
+  /**
+   * work 会话内的消息序号：运行中补的任务在发送时刻可能早于上一条 assistant 的
+   * 落库时刻，但真实顺序是 assistant 先、任务后，排序时优先看它。
+   */
+  order: number
 }

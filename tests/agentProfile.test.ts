@@ -223,7 +223,7 @@ describe('agentWfGrant（工作流授权面：内置规程面按分工固定 + �
   it('运行时 apiAllow：role 只有固定面，领域能力全在 work', () => {
     for (const voice of AGENT_VOICES) {
       const allow = agentRuntimeApiAllow(voice)
-      expect(allow).toEqual(['tmp', 'work', 'chat', 'compact'])
+      expect(allow).toEqual(['tmp', 'work', 'chat', 'agent', 'compact'])
       expect(allow).not.toContain('core')
       expect(allow).not.toContain('node')
       expect(allow).not.toContain('exam')
@@ -277,7 +277,7 @@ describe('profiles 声部 id 契约', () => {
     }
     // 经理龟与所有 role 一样：只有沟通 + 调度固定面，活交给 work
     const dispatcher = agentRuntimeApiAllow('dispatcher')
-    expect(dispatcher).toEqual(['tmp', 'work', 'chat', 'compact'])
+    expect(dispatcher).toEqual(['tmp', 'work', 'chat', 'agent', 'compact'])
     expect(dispatcher).not.toContain('node')
     expect(dispatcher).not.toContain('web')
     expect(dispatcher).not.toContain('delivery')

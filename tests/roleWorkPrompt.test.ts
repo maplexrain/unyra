@@ -22,10 +22,10 @@ describe('role / work 对外一体与汇报纪律', () => {
     expect(buildWorkSystem('tutor')).not.toContain('role 只拿到附件元信息')
   })
 
-  it('role 对用户汇报要求一两句话，细节放 detail', () => {
+  it('role 对用户汇报要求短句，交付物细节用 --- 分隔', () => {
     expect(buildTeacherSystem()).toContain('汇报必须短')
-    expect(buildTeacherSystem()).toContain('一两句话')
-    expect(buildFreeChatSystem()).toContain('text 控制在一两句话')
+    expect(buildTeacherSystem()).toContain('单独一行 `---`')
+    expect(buildFreeChatSystem()).toContain('单独一行 `---`')
   })
 
   it('role 遇到超出职责的问题先跨 role/work 对齐上下文，不凭当前记忆硬答', () => {
@@ -53,7 +53,7 @@ describe('role / work 对外一体与汇报纪律', () => {
     expect(tutor).toContain('### work 能做什么（只能委派，role 自己调不到）')
     expect(tutor).toContain('`node`（节点宇宙）')
     expect(tutor).toContain('**这些 api 不在 role 的沙箱里**')
-    expect(tutor).toContain('只有 `tmp / work / chat` + `compact`')
+    expect(tutor).toContain('只有 `tmp / work / chat / agent` + `compact`')
     expect(tutor).toContain('api.work.create')
     expect(tutor).toContain('api.work.send')
     expect(tutor).toContain('api.host.send')

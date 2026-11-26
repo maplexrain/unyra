@@ -2,10 +2,10 @@
  * 智能体的**独立设置页**：角色阵容中央工作区在「设置态」下替换对话流的那一块
  * （AgentSlot 的 settingsAgent 状态控制，见 workspace/AgentSlot）。
  *
- * 管的是「这位 role 自己」：名字与头像、跑在哪家提供商-模型上、思考档位、
- * execute 开放哪些 api 组、能触发哪些工作流，以及只读查看它实际会收到的系统提示词。
- * 每个字段都遵循 agent/agentProfile 的缺省语义：没改过 = 跟随默认 / 全局，
- * 改过才落盘；「恢复默认」整条清除覆盖。
+ * 管的是「这位 role 自己」：只读的身份档案（名称 / 简介 / 头像固定）、跑在哪家
+ * 提供商-模型上、思考档位、execute 开放哪些 api 组、能触发哪些工作流，以及只读查看
+ * 它实际会收到的系统提示词。每个字段都遵循 agent/agentProfile 的缺省语义：没改过 =
+ * 跟随默认 / 全局，改过才落盘；「恢复默认」整条清除覆盖。
  *
  * 与全局的「超级导师设置」（AgentSettingsPanel，管人格 / 技能 / MCP / 权限这些
  * 导师层面的机制）是两回事：这里是按 role 逐个配的「它自己是谁、用什么跑」。
@@ -28,9 +28,11 @@ import { SANDBOX_API_CATALOG } from '../../../agent/apiCatalog'
 import {
   AGENT_AVATARS,
   AGENT_WORKFLOW_PLANES,
+  DEFAULT_AGENT_BIO,
   DEFAULT_AGENT_NAME,
   FIXED_API_PLANE,
   WORK_FIXED_PLANE,
+  agentAvatarIdOf,
   variableWorkGroupsOf,
   variableWorkTopLevelOf,
   type AgentProfile,
@@ -60,7 +62,7 @@ export interface AgentSettingsViewProps {
   /** 提示词文件库与顺序（全局设置，不在 profile 覆盖里） */
   promptFiles?: PromptFileSettings
   onPromptFilesChange?: (next: PromptFileSettings) => void
-  /** 点开一份提示词文件：内置走只读提示词页签，外置走本地 md 页签 */
+  /** 点开一份提示词文件：内置走只读提示词页签，外置走本地 xml 页签 */
   onOpenPromptFile?: (file: PromptFileItem) => void
 }
 
@@ -247,6 +249,9 @@ export function AgentSettingsView({
 
   /* ---------- 身份 ---------- */
   const displayName = profile.name?.trim() || t(DEFAULT_AGENT_NAME[agentId])
+  const displayBio = profile.bio?.trim() || t(DEFAULT_AGENT_BIO[agentId])
+  const displayAvatar = agentAvatarIdOf(profile, agentId)
+  const avatarLabel = AGENT_AVATARS.find((a) => a.id === displayAvatar)?.label ?? displayAvatar
   // 头像兜底：仅聊天落对话气泡、其余落导师帽（龟龟图片在 Glyph 里认 id 现画）
   const avatarFallback = isFree ? MessageSquare : GraduationCap
 
@@ -264,7 +269,7 @@ export function AgentSettingsView({
 
   /* ---------- execute api（role 只有固定编排面；领域能力在 work 设置节展示） ---------- */
   /**
-   * role 层能力面由架构固定：help / compact + tmp / work / chat。
+   * role 层能力面由架构固定：help / compact + tmp / work / chat / agent。
    * 领域组（node / exam / classroom / web …）全部下沉到 work，在下方「工作层（work）」只读展示。
    */
   const coreCatalog = SANDBOX_API_CATALOG.find((g) => g.key === 'core')
@@ -315,7 +320,7 @@ export function AgentSettingsView({
         </button>
         <span aria-hidden="true" className="h-4 w-px bg-line" />
         <AgentAvatarGlyph
-          avatarId={profile.avatar}
+          avatarId={displayAvatar}
           fallback={avatarFallback}
           size={14}
           imgSize={18}
@@ -336,61 +341,41 @@ export function AgentSettingsView({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[880px] flex-col px-6 py-1">
-          {/* ---------- 身份 ---------- */}
+          {/* ---------- 基本信息（内置智能体身份固定，简历式只读） ---------- */}
           <section className="border-b border-line/60 py-4">
-            <SectionHead title={t('身份')} hint={t('改的是角色阵容左栏与这里的显示；不影响对话内容。')} />
-            <div className="flex flex-col gap-2.5">
-              <label className="flex items-center gap-2.5">
-                <span className="w-14 shrink-0 text-[12px] text-ink-soft">{t('名称')}</span>
-                <input
-                  type="text"
-                  value={profile.name ?? ''}
-                  placeholder={t(DEFAULT_AGENT_NAME[agentId])}
-                  onChange={(e) => onChange({ name: e.target.value })}
-                  className="min-w-0 flex-1 rounded-lg border border-line bg-card px-2.5 py-1.5 text-[12.5px] text-ink-strong outline-none transition placeholder:text-ink-faint hover:border-line-strong focus:border-seal/60"
+            <SectionHead title={t('基本信息')} />
+            <div className="flex flex-col gap-4 rounded-xl border border-line/70 bg-paper-deep/25 p-4 sm:flex-row sm:items-start">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line/70 bg-card">
+                <AgentAvatarGlyph
+                  avatarId={displayAvatar}
+                  fallback={avatarFallback}
+                  size={30}
+                  imgSize={64}
+                  imgClassName="h-16 w-16 rounded-xl"
                 />
-              </label>
-              <label className="flex items-start gap-2.5">
-                <span className="w-14 shrink-0 pt-1.5 text-[12px] text-ink-soft">{t('简介')}</span>
-                <textarea
-                  value={profile.bio ?? ''}
-                  maxLength={200}
-                  rows={2}
-                  placeholder={t('名册里显示的一句话介绍')}
-                  onChange={(e) => onChange({ bio: e.target.value })}
-                  className="min-h-[52px] min-w-0 flex-1 resize-none rounded-lg border border-line bg-card px-2.5 py-1.5 text-[12.5px] text-ink-strong outline-none transition placeholder:text-ink-faint hover:border-line-strong focus:border-seal/60"
-                />
-              </label>
-              <div className="flex items-start gap-2.5">
-                <span className="w-14 shrink-0 pt-1.5 text-[12px] text-ink-soft">{t('头像')}</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {AGENT_AVATARS.map((a) => {
-                    const on = (profile.avatar ?? '') === a.id
-                    return (
-                      <button
-                        key={a.id}
-                        type="button"
-                        aria-pressed={on}
-                        title={t(a.label)}
-                        onClick={() => onChange({ avatar: on ? undefined : a.id })}
-                        className={
-                          'flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border transition ' +
-                          (on
-                            ? 'border-seal/60 bg-seal/10 text-seal'
-                            : 'border-line bg-card text-ink-soft hover:border-line-strong hover:text-ink')
-                        }
-                      >
-                        <AgentAvatarGlyph
-                          avatarId={a.id}
-                          fallback={MessageSquare}
-                          size={15}
-                          imgSize={32}
-                          imgClassName="h-8 w-8 rounded-lg"
-                        />
-                      </button>
-                    )
-                  })}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-[18px] font-semibold leading-tight text-ink-strong">{displayName}</h2>
+                  <span className="rounded bg-emerald-500/10 px-1.5 py-px text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                    {t('内置')}
+                  </span>
+                  <span className="rounded bg-line/55 px-1.5 py-px text-[10px] text-ink-faint">{t('只读')}</span>
                 </div>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-soft">{displayBio}</p>
+                <dl className="mt-3.5 grid grid-cols-1 gap-x-8 gap-y-1.5 text-[12px] sm:grid-cols-2">
+                  <div className="flex min-w-0 gap-2">
+                    <dt className="w-9 shrink-0 text-ink-faint">{t('名称')}</dt>
+                    <dd className="min-w-0 truncate font-medium text-ink-strong">{displayName}</dd>
+                  </div>
+                  <div className="flex min-w-0 gap-2">
+                    <dt className="w-9 shrink-0 text-ink-faint">{t('头像')}</dt>
+                    <dd className="min-w-0 truncate font-medium text-ink-strong">{t(avatarLabel)}</dd>
+                  </div>
+                </dl>
+                <p className="mt-3 text-[11px] leading-relaxed text-ink-faint">
+                  {t('内置智能体的身份固定，名称、简介与头像不可修改。')}
+                </p>
               </div>
             </div>
           </section>
@@ -487,7 +472,7 @@ export function AgentSettingsView({
               title={t('execute 开放的 api')}
               hint={
                 isFree
-                  ? t('自由对话只有 work / chat / tmp / compact 固定面；联网、日程等领域能力全部在 work 层。')
+                  ? t('自由对话只有 work / chat / agent / tmp / compact 固定面；联网、日程等领域能力全部在 work 层。')
                   : isTutor
                     ? t('导师的 role 面按架构固定、只读（不可增删）：只保留对学习者说话与编排 work 的固定基座；领域执行面全部在下方「工作层（work）」。')
                     : t('这位 role 的 api 面由架构分工固定、只读（不可增删）：role 只保留 work / chat / tmp / compact，领域执行能力在 work 层。')

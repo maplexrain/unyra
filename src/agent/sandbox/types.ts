@@ -21,6 +21,7 @@ export type { CreateExamPayload, ExamToolDeps, ExamAction } from './types/exam'
 
 /* ---------- 总装配 ---------- */
 export type { SandboxOptions } from './types/options'
+export type { AgentListOps } from './types/agent'
 
 /* ---------- permission：路径放行 ---------- */
 export type { PermissionRequestPayload, PermissionOps } from './types/permission'

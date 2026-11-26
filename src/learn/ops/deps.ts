@@ -70,6 +70,11 @@ export interface AgentOpsDeps {
    */
   workflowGrant?: AgentWfGrant
   /**
+   * role 层的已注册智能体名录（agent.list）。不注入就没有这一组；
+   * work 层不注入它（work 不需要查团队名册）。
+   */
+  agent?: SandboxOptions['agent']
+  /**
    * role 层的 work 管理面（work.*）。不注入就没有这一组；
    * work 层不注入它（work 不能再派 work）。
    */

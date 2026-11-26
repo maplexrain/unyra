@@ -42,8 +42,15 @@ export function isInterruptedNotice(text: string): boolean {
  * settle=true 表示轮次收口（正常结束或被用户停止）：同时清掉 inflight 标记，载入恢复不再认它。
  */
 export function upsertAssistantInFlight(conv: Conversation, msg: ConversationMessage, settle = false): Conversation {
-  const exists = conv.messages.some((m) => m.id === msg.id)
-  const messages = exists ? conv.messages.map((m) => (m.id === msg.id ? msg : m)) : [...conv.messages, msg]
+  const existing = conv.messages.find((m) => m.id === msg.id)
+  /*
+   * 轮内增量落库会反复替换同一条 assistant：时间戳只在第一次落库时定，
+   * 后续更新沿用旧值。否则每 flush 一次 ts 就往前跳，消息列表里的时间会
+   * 变成「最后一次写入」而不是「这条回复开始的时间」。
+   */
+  const next = existing ? { ...msg, ts: existing.ts } : msg
+  const exists = Boolean(existing)
+  const messages = exists ? conv.messages.map((m) => (m.id === msg.id ? next : m)) : [...conv.messages, next]
   return { ...conv, messages, updatedAt: Date.now(), ...(settle ? { inflight: undefined } : {}) }
 }
 

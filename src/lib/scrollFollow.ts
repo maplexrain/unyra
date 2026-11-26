@@ -21,6 +21,14 @@ export const DETACH_WINDOW_MS = 420
 /** 回到离底部这么近就算「已经看到最新」，重新跟随 */
 export const REPIN_PX = 32
 
+/**
+ * 新消息到达时，视口底部离列表底部不超过这么多，就自动跟到底。
+ *
+ * 比 REPIN_PX 宽得多：32px 是「本来就没离开」，400px 是「虽然往上翻了一点，但还在
+ * 最新几屏附近」。用户停在这个范围内时，新消息仍应接上，不必再点「回到最新」。
+ */
+export const NEW_MESSAGE_REPIN_PX = 400
+
 /** 滚轮事件之后多久之内，滚动位置的移动都算「滚轮造成的」 */
 export const WHEEL_ATTRIBUTION_MS = 80
 
@@ -75,6 +83,11 @@ export function bottomGap(el: { scrollHeight: number; scrollTop: number; clientH
 /** 是否已经回到最新（可以重新跟随） */
 export function isAtBottom(gap: number): boolean {
   return gap <= REPIN_PX
+}
+
+/** 新消息到达时是否还值得自动跟到底（见 NEW_MESSAGE_REPIN_PX） */
+export function isNearBottomForNewMessage(gap: number): boolean {
+  return gap <= NEW_MESSAGE_REPIN_PX
 }
 
 /**

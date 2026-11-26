@@ -10,7 +10,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { useMessageList } from '../src/components/agent/panel/useMessageList'
 import type { MessageListProps } from '../src/components/agent/panel/MessageList'
 import { isWorkDispatchMessage } from '../src/components/agent/panel/workDispatch'
-import type { ConversationMessage, MessageUsage } from '../src/agent/types'
+import { workEventSlot, type WorkRunSlot } from '../src/learn/useAgent/session'
+import type { AgentEvent, ConversationMessage, MessageUsage } from '../src/agent/types'
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -108,7 +109,10 @@ describe('mind 上下文账与 work 消息内联', () => {
         ts: 200,
         parts: [{ type: 'text', text: '调研中间结果' }],
       } satisfies ConversationMessage,
-      work: { id: 'w1', name: '调研-1' },
+      workId: 'w1',
+      workName: '调研-1',
+      ts: 200,
+      order: 0,
     }
     const r = render({
       messages: [before, after],
@@ -122,11 +126,50 @@ describe('mind 上下文账与 work 消息内联', () => {
     expect(ids).toEqual(['r1', 'wm1', 'r2'])
     const workRow = r.host.querySelector('[data-work-message="w1"]')
     expect(workRow).not.toBeNull()
+    expect(workRow?.getAttribute('data-mind-ts')).toBe('200')
     expect(workRow?.textContent).toContain('work ·')
     expect(workRow?.textContent).toContain('调研-1')
     expect(workRow?.textContent).toContain('调研中间结果')
     expect(r.host.querySelector('[data-inline-work-window]')).toBeNull()
     expect(r.host.querySelector('[data-work-dispatch-list]')).toBeNull()
+    r.cleanup()
+  })
+
+  it('多条 work 的消息各自带来源混入 mind 列表，同一条 work 内按 order 而不是发送时刻排', () => {
+    const r1: ConversationMessage = { id: 'r1', role: 'user', ts: 100, parts: [{ type: 'text', text: '开始' }] }
+    const r2: ConversationMessage = { id: 'r2', role: 'assistant', ts: 500, parts: [{ type: 'text', text: '结束' }] }
+    const a0 = {
+      m: { id: 'a0', role: 'assistant' as const, ts: 300, parts: [{ type: 'text', text: 'A 先完成' }] } satisfies ConversationMessage,
+      workId: 'wa',
+      workName: '调研-A',
+      ts: 300,
+      order: 0,
+    }
+    const a1 = {
+      m: { id: 'a1', role: 'assistant' as const, ts: 200, parts: [{ type: 'text', text: 'A 后补发' }] } satisfies ConversationMessage,
+      workId: 'wa',
+      workName: '调研-A',
+      ts: 200,
+      order: 1,
+    }
+    const b0 = {
+      m: { id: 'b0', role: 'assistant' as const, ts: 250, parts: [{ type: 'text', text: 'B 中间结果' }] } satisfies ConversationMessage,
+      workId: 'wb',
+      workName: '调研-B',
+      ts: 250,
+      order: 0,
+    }
+    const r = render({ messages: [r1, r2], mind: true, agentName: '导师龟', workMessages: [a1, b0, a0] })
+    const ids = Array.from(r.host.querySelectorAll('[data-mind-message-id]')).map((el) =>
+      el.getAttribute('data-mind-message-id'),
+    )
+    // A 的两条消息原始 ts 倒挂，但时间线按 order 修正排序值；B 按自己的时间插在前面。
+    expect(ids).toEqual(['r1', 'b0', 'a0', 'a1', 'r2'])
+    const rows = Array.from(r.host.querySelectorAll('[data-work-message]'))
+    expect(rows.map((el) => el.getAttribute('data-work-message'))).toEqual(['wb', 'wa', 'wa'])
+    expect(rows.map((el) => el.getAttribute('data-mind-ts'))).toEqual(['250', '300', '200'])
+    expect(rows[0]?.textContent).toContain('调研-B')
+    expect(rows[1]?.textContent).toContain('调研-A')
     r.cleanup()
   })
 
@@ -138,11 +181,32 @@ describe('mind 上下文账与 work 消息内联', () => {
         ts: 200,
         parts: [{ type: 'text', text: '调研中间结果' }],
       } satisfies ConversationMessage,
-      work: { id: 'w1', name: '调研-1' },
+      workId: 'w1',
+      workName: '调研-1',
+      ts: 200,
+      order: 0,
     }
     const r = render({ messages: [workMessage], mind: false, workMessages: [workItem] })
     expect(r.host.querySelector('[data-work-message]')).toBeNull()
     r.cleanup()
+  })
+
+  it('work 实时槽位重放同一个事件不会重复追加', () => {
+    const prev: WorkRunSlot[] = [
+      {
+        conversationId: 'c1',
+        workId: 'w1',
+        runId: 'r1',
+        ts: 1,
+        parts: [{ type: 'thinking', text: '参考' }],
+      },
+    ]
+    const e: AgentEvent = { type: 'thinking', delta: '说明' }
+    const a = workEventSlot(prev, 'c1', 'w1', 'r1', e)
+    const b = workEventSlot(prev, 'c1', 'w1', 'r1', e)
+    expect(prev[0]?.parts).toEqual([{ type: 'thinking', text: '参考' }])
+    expect(a[0]?.parts).toEqual([{ type: 'thinking', text: '参考说明' }])
+    expect(b[0]?.parts).toEqual(a[0]?.parts)
   })
 
   it('只有 create / send / chat.send 到 work 才算派发；kill 与普通 execute 不算', () => {

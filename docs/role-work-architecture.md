@@ -27,7 +27,7 @@ work ──host.send──▶ 回到所属 role 的 Work 通道
 
 - **一个 agent 的 role 层始终只有一段会话**（同一目标下复用最新的 `Conversation.voice`，
   没有才落 `cv:<role>:<goal>`）；work 才是一任务一段、可多开。
-- role 的 API 是固定面：`tmp / work / chat` + 顶层 `compact`（`help` 恒在）。
+- role 的 API 是固定面：`tmp / work / chat / agent` + 顶层 `compact`（`help` 恒在）。
   领域组（node / exam / browser / classroom / web / schedule / workspace…）一律不下发。
 - role 的系统提示词只写「我是谁、我负责什么分工、怎么派 work、怎么对外说」；
   排版配方、围栏语法、领域工作流、交付登记这些「怎么做」全部在 work 提示词里。
@@ -44,17 +44,20 @@ api.work.create({ name? })
 api.work.kill(name)        // 中止并删除
 api.work.send({ name, text?, messageId? })
 api.chat.send({ channel, to?, text, messageId?, attachments? })
+api.agent.list()           // 只读：id / 名称 / 简介
 ```
 
 - `chat.send` 的 channel 只有 `user / agent / work`；`agent` 的 `to` 是 role id，`work` 的 `to` 是 work 名，`user` 省略 `to`。
 - 附件最多 4 个；支持 `moji:static/…`、工作区路径与 http(s) 图片。
+- `chat.send` 的 `text` 是唯一对外正文。交付物完成通知可用单独一行 `---` 分隔简短 / 详细：前面一句话口语化完成通知，后面放具体改动、索引名 / 标识符、专业术语与核验过程；聊天界面默认只显示短句，用户可切换查看详细。普通问答、寒暄、进度同步不要用该分隔。
 - 名字 1–32 字、role 内唯一，缺省 `work-N`；`/ \ : * ? " < > |` 不许出现。
+- `agent.list` 返回内置团队、自由对话与外部 agent，内置在前；只读，不能改名或增删。
 
 ## work 的边界
 
 - work **没有人格**；系统提示词由 `buildWorkSystem(role)` 生成，创建时固化，不随 role 改动。
-  依次拼：work 基础纪律 → 本 role 的职责说明（`WORK_ROLE_BRIEF`，无人格）→ 排版配方
-  （仅需要产物的内容 role）→ 固定 API → 领域 API → 围栏语法 → 工作流规程 → 领域纪律。
+  按两段拼：执行基座（work 基础纪律 + 固定 API）→ 能力规程（本 role 的职责说明、排版配方、
+  动态 API、围栏语法、工作流规程与领域纪律）。
 - work 只有 `tmp / host` 固定组 + 该 role 的领域组（去掉 `work/chat/permission/ui`）；
   顶层有 `wait / compact`，但没有 `ask`（work 不直接面对用户）。
 - 一个 work 只对接创建它的 role；上下文、消息、execTrace、交付记录都在自己的账本里。

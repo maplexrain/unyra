@@ -3,18 +3,21 @@
  *
  * 内容与设置页列表同源（learn/ai/promptFiles → promptSections / workSystem），
  * 因此这里不做任何二次拼装，只按 agent + 层 + 文件 id 取回原段正文。
- * 外置提示词不走这里：它们本身就是 prompts/ 下的 md，用普通本地文件页签编辑。
+ * 外置提示词不走这里：它们本身就是 prompts/ 下的 xml（兼容旧 md），用普通本地文件页签编辑。
  *
  * 预览与「编辑（只读）」共用同一份正文：后者只是把源码铺进 SourceEditor，
  * 保留行号、折叠与 Vim 浏览，写入事务被 readOnly 挡住，不会产生草稿。
+ *
+ * 预览按 XML 顶层标签切块：左侧目录列出每块，点击滚到对应块；没有标签时整篇一块。
  */
-import { useMemo, useState, useSyncExternalStore } from 'react'
-import { ArrowLeft, FileText, Lock } from 'lucide-react'
+import { useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { ArrowLeft, FileText, ListTree, Lock } from 'lucide-react'
 import { DEFAULT_AGENT_NAME } from '../../../agent/agentProfile'
 import { loadAgentSettings, subscribeAgentSettings } from '../../../agent/settings'
 import { listPromptFiles } from '../../../learn/ai/promptFiles'
 import MarkdownView from '../../MarkdownView'
 import SourceEditor from '../SourceEditor'
+import { parsePromptXml } from '../../../lib/promptXml'
 import { renderNote } from '../../../lib/markdown'
 import { t } from '../../../i18n'
 import type { PromptFileLayer } from '../../../agent/promptFiles'
@@ -40,6 +43,10 @@ export function PromptFileView({
     [agentId, layer, settings.promptFiles, fileId],
   )
   const [mode, setMode] = useState<'preview' | 'source'>('preview')
+  const [activeBlock, setActiveBlock] = useState(0)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const blocks = useMemo(() => parsePromptXml(file?.content ?? ''), [file?.content])
+  const blockHtml = useMemo(() => blocks.map((block) => renderNote(block.body)), [blocks])
 
   if (!file) {
     return (
@@ -49,9 +56,18 @@ export function PromptFileView({
     )
   }
 
-  const html = renderNote(file.content)
   const agentName = settings.profiles?.[agentId]?.name?.trim() || DEFAULT_AGENT_NAME[agentId]
   const charCount = file.content.length
+  const active = Math.min(activeBlock, Math.max(0, blocks.length - 1))
+
+  const jumpTo = (index: number) => {
+    const wrap = scrollRef.current
+    const target = wrap?.querySelector<HTMLElement>(`[data-prompt-block="${index}"]`)
+    if (!wrap || !target) return
+    const delta = target.getBoundingClientRect().top - wrap.getBoundingClientRect().top
+    wrap.scrollTo({ top: wrap.scrollTop + delta - 12, behavior: 'smooth' })
+    setActiveBlock(index)
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-paper">
@@ -128,22 +144,80 @@ export function PromptFileView({
             onChange={ignoreReadOnlyChange}
             state="saved"
             label={t(file.name)}
-            ext=".md"
+            ext=".xml"
             readOnly
           />
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
-          <article
-            data-prompt-preview-body
-            className="moji-selectable mx-auto w-full max-w-[820px] px-8 py-6"
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <aside
+            data-prompt-outline
+            className="w-[188px] shrink-0 overflow-y-auto border-r border-line/60 bg-paper-deep/20 px-2.5 py-4"
           >
-            {file.content.trim() ? (
-              <MarkdownView html={html} className="moji-agent-md" />
+            <div className="flex items-center gap-1.5 px-1.5 pb-2 text-[11px] font-semibold text-ink-soft">
+              <ListTree size={12} className="text-seal/80" />
+              <span>{t('目录')}</span>
+              <span className="ml-auto tabular-nums text-ink-faint">{blocks.length}</span>
+            </div>
+            {blocks.length ? (
+              <nav aria-label={t('提示词目录')} className="flex flex-col gap-0.5">
+                {blocks.map((block, index) => (
+                  <button
+                    key={`${block.tag}-${index}`}
+                    type="button"
+                    data-prompt-outline-item={index}
+                    aria-current={index === active ? 'true' : undefined}
+                    onClick={() => jumpTo(index)}
+                    className={`flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11.5px] transition ${
+                      index === active
+                        ? 'bg-seal/10 font-medium text-seal-deep'
+                        : 'text-ink-soft hover:bg-line/35 hover:text-ink-strong'
+                    }`}
+                  >
+                    <span className="w-4 shrink-0 text-right text-[10px] tabular-nums text-ink-faint">
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{t(block.title)}</span>
+                  </button>
+                ))}
+              </nav>
             ) : (
-              <p className="text-[12.5px] text-ink-faint">{t('这一份提示词是空的。')}</p>
+              <p className="px-1.5 text-[11px] text-ink-faint">{t('没有可列出的块')}</p>
             )}
-          </article>
+          </aside>
+          <div
+            ref={scrollRef}
+            data-prompt-preview-body
+            className="moji-selectable min-w-0 flex-1 overflow-auto"
+          >
+            <article className="mx-auto flex w-full max-w-[880px] flex-col gap-3 px-7 py-6">
+              {blocks.length ? (
+                blocks.map((block, index) => (
+                  <section
+                    key={`${block.tag}-${index}`}
+                    data-prompt-block={index}
+                    className="scroll-mt-4 rounded-xl border border-line/70 bg-card/35 p-4"
+                  >
+                    <header className="mb-2 flex items-center gap-2">
+                      <span className="text-[12px] font-semibold text-ink-strong">{t(block.title)}</span>
+                      {block.tag ? (
+                        <code className="rounded bg-line/55 px-1.5 py-px text-[10px] text-ink-faint">
+                          {block.tag}
+                        </code>
+                      ) : null}
+                    </header>
+                    {block.body ? (
+                      <MarkdownView html={blockHtml[index] ?? ''} className="moji-agent-md" />
+                    ) : (
+                      <p className="text-[12px] text-ink-faint">{t('这一块是空的。')}</p>
+                    )}
+                  </section>
+                ))
+              ) : (
+                <p className="text-[12.5px] text-ink-faint">{t('这一份提示词是空的。')}</p>
+              )}
+            </article>
+          </div>
         </div>
       )}
     </div>

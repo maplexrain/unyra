@@ -56,7 +56,7 @@ export function openAgentSettingsTab(openTab: OpenTab): void {
   openTab({ kind: 'settings' })
 }
 
-/** 打开一份提示词文件：内置走只读提示词页，外置走 prompts/ 下的本地 md 页签 */
+/** 打开一份提示词文件：内置走只读提示词页，外置走 prompts/ 下的本地 xml 页签 */
 export function openPromptFileTab(
   openTab: OpenTab,
   onToast: (text: string) => void,

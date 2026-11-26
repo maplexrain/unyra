@@ -232,6 +232,7 @@ function MindUnitRow({
       }}
       data-mind-unit-id={`${m.id}:${index}`}
       data-mind-message-id={first ? m.id : undefined}
+      data-mind-ts={m.ts}
       data-mind-part-type={item?.type ?? 'empty'}
       data-work-message={work ? work.id : undefined}
       data-mind-collapsible={collapseText ? 'true' : undefined}

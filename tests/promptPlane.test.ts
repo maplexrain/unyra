@@ -38,7 +38,7 @@ describe('role 层：只暴露沟通与调度面', () => {
     it(voice + ': 只有固定组，没有任何领域组', () => {
       const text = build(voice)
       const held = AGENT_API_PLANES[voice].groups
-      expect(held).toEqual(['tmp', 'work', 'chat'])
+      expect(held).toEqual(['tmp', 'work', 'chat', 'agent'])
       expect(AGENT_API_PLANES[voice].topLevel).toEqual(['compact'])
       for (const g of held) expect(text).toContain('#### api.' + g + ' —')
       for (const g of ROLE_DOMAIN_GROUPS) {
@@ -64,8 +64,8 @@ describe('role 层：只暴露沟通与调度面', () => {
     expect(buildFixerSystem()).not.toContain('交付登记纪律：')
   })
 
-  it('role 固定面是六位挂目标 role 的交集：tmp / work / chat + compact', () => {
-    expect(FIXED_API_PLANE.groups).toEqual(['tmp', 'work', 'chat'])
+  it('role 固定面是六位挂目标 role 的交集：tmp / work / chat / agent + compact', () => {
+    expect(FIXED_API_PLANE.groups).toEqual(['tmp', 'work', 'chat', 'agent'])
     expect(FIXED_API_PLANE.topLevel).toEqual(['compact'])
   })
 })

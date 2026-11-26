@@ -16,6 +16,7 @@ import { attachNodeFacade, registerNodeApi } from './nodeObject'
 import { wrapApi, imagesOf } from './wrap'
 import type { SandboxCall, SandboxOptions } from './types'
 import { installLearn } from './api/learn'
+import { installAgent } from './api/agent'
 import { installWeb } from './api/web'
 import { installBrowser } from './api/browser'
 import { installHost } from './api/host'
@@ -88,6 +89,8 @@ export function buildApi(
     wrapApi(api, 'tmp.list', (): { items: TmpInfo[] } => ({ items: store.list() }), log)
     wrapApi(api, 'tmp.clear', () => ({ removed: store.clear() }), log)
   }
+
+  installAgent(api, opts, log)
 
   // 学习编排域：exam / memory / schedule / method / wf / code / workspace / compact / chip / delivery
   installLearn(api, opts, log)

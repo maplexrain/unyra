@@ -728,7 +728,7 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     })
   }
 
-  it('渲染六节内容；改名 / 选头像 / 选档位都回传覆盖字段', () => {
+  it('渲染六节内容；内置名称 / 简介 / 头像只读，思考档位仍可改', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -746,35 +746,22 @@ describe('AgentSettingsView 智能体独立设置页', () => {
       )
     })
 
-    for (const title of ['身份', '提供商 · 模型', '思考强度', 'execute 开放的 api', '工作层的工作流', '系统提示词']) {
+    for (const title of ['基本信息', '提供商 · 模型', '思考强度', 'execute 开放的 api', '工作层的工作流', '系统提示词']) {
       expect(host.textContent).toContain(title)
     }
     // 系统提示词列文件项，并在下方显示运行时拼接后的预览
     expect(host.querySelectorAll('pre')).toHaveLength(1)
     expect(host.textContent).toContain('拼接后的提示词预览')
-    expect(host.textContent).toContain('共同提示词 · 团队协作与沙箱执行基座')
-    expect(host.textContent).toContain('固定组 API 能力面（全员共用）')
-    expect(host.textContent).toContain('role 角色定位')
-    expect(host.textContent).toContain('你的专属分工')
+    expect(host.textContent).toContain('执行基座')
+    expect(host.textContent).toContain('角色分工')
 
-    // 改名（受控 input）
-    const nameInput = host.querySelector<HTMLInputElement>('input[type="text"]')!
-    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
-    setValue.call(nameInput, '小导师')
-    act(() => {
-      nameInput.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    expect(onChange).toHaveBeenCalledWith({ name: '小导师' })
+    // 内置身份固定：没有名称 / 简介文本框，也没有头像选择按钮
+    expect(host.querySelector('input[type="text"]')).toBeNull()
+    expect(host.querySelector('textarea')).toBeNull()
+    expect(host.querySelector('button[title="机器人"]')).toBeNull()
+    expect(host.textContent).toContain('内置智能体的身份固定')
 
-    // 选头像（aria-pressed 的图标按钮）
-    const botAvatar = host.querySelector<HTMLButtonElement>('button[title="机器人"]')!
-    expect(botAvatar).toBeTruthy()
-    act(() => {
-      botAvatar.click()
-    })
-    expect(onChange).toHaveBeenCalledWith({ avatar: 'bot' })
-
-    // 选思考档位
+    // 选思考档位仍然可改
     const low = host.querySelector<HTMLButtonElement>('button[title="快，短问答与批注"]')!
     expect(low).toBeTruthy()
     act(() => {
@@ -936,19 +923,18 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     const tutor = render({ apiGroups: ['web'] } as AgentProfile)
     expect(tutor.preCount).toBe(1)
     expect(tutor.text).toContain('拼接后的提示词预览')
-    expect(tutor.text).toContain('共同提示词 · 团队协作与沙箱执行基座')
-    expect(tutor.text).toContain('固定组 API 能力面（全员共用）')
-    expect(tutor.text).toContain('role 角色定位')
-    expect(tutor.text).toContain('你的专属分工')
+    expect(tutor.text).toContain('执行基座')
+    expect(tutor.text).toContain('基座 · 置顶')
+    expect(tutor.text).toContain('角色分工')
 
     const examiner = render({}, 'examiner')
     expect(examiner.preCount).toBe(1)
-    expect(examiner.text).toContain('role 角色定位')
+    expect(examiner.text).toContain('角色分工')
 
     const free = render({}, 'free')
     expect(free.preCount).toBe(1)
-    expect(free.text).toContain('自由对话定位与页签说明')
-    expect(free.text).toContain('核心边界与任务终止铁律（绝对红线）')
+    expect(free.text).toContain('执行基座')
+    expect(free.text).toContain('角色边界')
   })
 
   it('返回对话与恢复默认两个出口', () => {

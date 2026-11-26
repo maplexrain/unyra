@@ -8,9 +8,9 @@
  * 2. **这里是六位团队角色与自由对话系统提示词的唯一装配来源**：运行期的 buildFreeChatSystem /
  *    buildTeacherSystem / buildVoiceSystem 都把这里的分段按 '\n\n' 拼回去，设置页的预览
  *    直接展示同一份分段——预览与真正发出的提示词不会再各说各话。
- * 3. role 的顺序（用户定稿）：共同基础前缀 → **固定组 API** → 身份定位 → 分工（能做什么）
- *    → 附加提示词。role 只拿「沟通 + 调度」信息；排版、领域语法、工作流规程、领域纪律
- *    都归 work，由 `workSystem` 装配（见 buildWorkSystem）。
+ * 3. role 的顺序（用户定稿）：执行基座（共同前缀 + 固定组 API）→ 角色分工（身份、
+ *    专属分工、可委派 work 能力）→ 附加提示词。role 只拿「沟通 + 调度」信息；排版、
+ *    领域语法、工作流规程、领域纪律都归 work，由 `workSystem` 装配。
  */
 
 import { type AgentVoice } from '../../agent/agentProfile'
@@ -45,6 +45,8 @@ export interface PromptSection {
   isCommon?: boolean
   /** 该部分的 markdown 提示词源文本 */
   content: string
+  /** 基座段：始终在所在层的第一位，用户顺序不能把它挤下去 */
+  pinned?: boolean
 }
 
 /* =========================================================================
@@ -89,8 +91,8 @@ function extraSection(id: string, opts: BuildSectionsOpts): PromptSection[] {
     {
       id,
       index: 0,
-      title: '用户附加自定义系统提示词',
-      badge: '附加提示',
+      title: '附加提示词',
+      badge: '附加',
       color: 'slate',
       content: promptBlock('user_extra', content),
     },
@@ -109,38 +111,37 @@ export function joinPromptSections(sections: PromptSection[]): string {
   return sections.map((s) => s.content).join('\n\n')
 }
 
-/** 固定组 API 段（六位 role 逐字节一致） */
-function fixedApiSection(voice: AgentVoice, content: string): PromptSection {
-  return {
-    id: `${voice}-api-fixed`,
-    index: 0,
-    title: '固定组 API 能力面（全员共用）',
-    badge: '固定组',
-    color: 'blue',
-    isCommon: true,
-    content: promptBlock('tool_capabilities', content),
-  }
-}
-
-/** role 层的人格与分工两段（语法 / 工作流 / 领域纪律全部在 work 提示词里） */
-function voiceCopySections(voice: AgentVoice): PromptSection[] {
+/** role 层的两段：执行基座（共同前缀 + 固定 API）与角色分工（定位 / 分工 / 可委派能力） */
+function roleSections(voice: AgentVoice): PromptSection[] {
+  const parts = apiPromptPartsFor(voice)
   const copy = voiceCopyOf(voice)
+  const base = [SHARED_AGENT_PREFIX, parts.fixed ? promptBlock('tool_capabilities', parts.fixed) : '']
+    .filter(Boolean)
+    .join('\n\n')
   return [
+    {
+      id: `${voice}-base`,
+      index: 0,
+      title: '执行基座',
+      badge: '基座',
+      color: 'indigo',
+      isCommon: true,
+      pinned: true,
+      content: base,
+    },
     {
       id: `${voice}-role`,
       index: 0,
-      title: 'role 角色定位',
-      badge: '身份定位',
+      title: '角色分工',
+      badge: '角色',
       color: 'rose',
-      content: promptBlock('identity', [TURTLE_CLAN_GUIDE, '', ...copy.role].join('\n')),
-    },
-    {
-      id: `${voice}-duty`,
-      index: 0,
-      title: '你的专属分工',
-      badge: '分工协调',
-      color: 'amber',
-      content: promptBlock('duties', copy.duty.join('\n')),
+      content: [
+        promptBlock('identity', [TURTLE_CLAN_GUIDE, '', ...copy.role].join('\n')),
+        promptBlock('duties', copy.duty.join('\n')),
+        promptBlock('delegated_capabilities', workDelegationSectionFor(voice)),
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
     },
   ]
 }
@@ -153,37 +154,27 @@ function voiceCopySections(voice: AgentVoice): PromptSection[] {
 function getFreeChatSections(opts: BuildSectionsOpts = {}): PromptSection[] {
   return numbered([
     {
-      id: 'free-common-prefix',
+      id: 'free-base',
       index: 0,
-      title: '共同提示词 · 团队协作与沙箱执行基座',
-      badge: '全员基座',
+      title: '执行基座',
+      badge: '基座',
       color: 'indigo',
       isCommon: true,
-      content: ALL_AGENTS_COMMON_PREFIX,
-    },
-    {
-      id: 'free-api-fixed',
-      index: 0,
-      title: '固定组 API 能力面（架构固定）',
-      badge: '固定组',
-      color: 'blue',
-      content: FREE_CHAT_API_SECTION,
+      pinned: true,
+      content: [ALL_AGENTS_COMMON_PREFIX, FREE_CHAT_API_SECTION].filter(Boolean).join('\n\n'),
     },
     {
       id: 'free-role',
       index: 0,
-      title: '自由对话定位与页签说明',
-      badge: '身份定位',
+      title: '角色边界',
+      badge: '角色',
       color: 'rose',
-      content: promptBlock('identity', FREE_CHAT_IDENTITY),
-    },
-    {
-      id: 'free-boundary',
-      index: 0,
-      title: '核心边界与任务终止铁律（绝对红线）',
-      badge: '安全红线',
-      color: 'rose',
-      content: promptBlock('boundaries', FREE_CHAT_BOUNDARY),
+      content: [
+        promptBlock('identity', FREE_CHAT_IDENTITY),
+        promptBlock('boundaries', FREE_CHAT_BOUNDARY),
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
     },
     ...extraSection('free-extra', opts),
   ])
@@ -191,29 +182,7 @@ function getFreeChatSections(opts: BuildSectionsOpts = {}): PromptSection[] {
 
 /** 拆解执行声部的提示词分段（导师与五位承接声部共用同一骨架） */
 function getVoiceSections(voice: AgentVoice, opts: BuildSectionsOpts = {}): PromptSection[] {
-  const parts = apiPromptPartsFor(voice)
-  return numbered([
-    {
-      id: `${voice}-common-prefix`,
-      index: 0,
-      title: '共同提示词 · 团队协作与沙箱执行基座',
-      badge: '共同基础',
-      color: 'indigo',
-      isCommon: true,
-      content: SHARED_AGENT_PREFIX,
-    },
-    fixedApiSection(voice, parts.fixed),
-    ...voiceCopySections(voice),
-    {
-      id: `${voice}-work-api`,
-      index: 0,
-      title: 'work 能力面（只能委派）',
-      badge: '委派边界',
-      color: 'amber',
-      content: promptBlock('delegated_capabilities', workDelegationSectionFor(voice)),
-    },
-    ...extraSection(`${voice}-extra`, opts),
-  ])
+  return numbered([...roleSections(voice), ...extraSection(`${voice}-extra`, opts)])
 }
 
 /**

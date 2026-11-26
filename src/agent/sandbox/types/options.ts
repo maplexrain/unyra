@@ -22,6 +22,7 @@ import type { DeliveryOps } from './delivery'
 import type { MethodOps } from './method'
 import type { WorkflowOps } from './workflow'
 import type { WorkSandboxApi, ChatSandboxApi, HostSandboxApi } from '../../roleWork/types'
+import type { AgentListOps } from './agent'
 import type { UserInfoOps } from './userInfo'
 import type { UiOps } from './ui'
 import type { BrowserOps } from './browser'
@@ -175,6 +176,11 @@ export interface SandboxOptions {
    * 宿主实现见 agent/permissions。
    */
   permission?: PermissionOps
+  /**
+   * role 层的已注册智能体名录（api.agent.list）。
+   * 只读；work 层不注入它。
+   */
+  agent?: AgentListOps
   /**
    * role 层的 work 管理面（list / status / stop / create / kill / send）。
    * work 层不注入它——work 不能再往下派 work。

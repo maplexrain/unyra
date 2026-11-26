@@ -166,6 +166,28 @@ export function useMessageList({
     [mind, workMessages],
   )
   const timeline = useMemo(() => {
+    /*
+     * 同一条 work 的可见消息必须保持会话数组顺序：运行中补派的任务在发送时就带了 ts，
+     * 但它要等当前 assistant 到跳边界落库之后才进 work.messages，原始 ts 可能早于
+     * 上一条 assistant。给每条 work 消息算一个「不倒退」的排序时刻：组内按 order，
+     * 排序值取 max(原始 ts, 上一条排序值 + 1)。raw ts 仍然留在 data-mind-ts 上，
+     * 这里只改时间线位置，不改时间戳本身。
+     */
+    const workSortTs = new Map<WorkTimelineMessage, number>()
+    const byWork = new Map<string, WorkTimelineMessage[]>()
+    for (const item of workRows) {
+      const list = byWork.get(item.workId)
+      if (list) list.push(item)
+      else byWork.set(item.workId, [item])
+    }
+    for (const list of byWork.values()) {
+      list.sort((a, b) => a.order - b.order || a.ts - b.ts)
+      let cursor = Number.NEGATIVE_INFINITY
+      for (const item of list) {
+        cursor = Math.max(item.ts, cursor + 1)
+        workSortTs.set(item, cursor)
+      }
+    }
     const items: TimelineItem[] = segments.map((seg, index) => ({
       kind: 'segment',
       key: seg.kind === 'marks' ? 'marks:' + seg.msgs[0].id : 'row:' + seg.m.id,
@@ -176,8 +198,8 @@ export function useMessageList({
     workRows.forEach((item, index) => {
       items.push({
         kind: 'work',
-        key: 'work:' + item.work.id + ':' + item.m.id,
-        ts: item.m.ts ?? 0,
+        key: 'work:' + item.workId + ':' + item.m.id,
+        ts: workSortTs.get(item) ?? item.ts,
         seq: segments.length + index,
         item,
       })
@@ -258,7 +280,7 @@ export function useMessageList({
               setBubblePreview={setBubblePreview}
               onOpenFile={onOpenFile}
               goalId={goalId}
-              work={item.item.work}
+              work={{ id: item.item.workId, name: item.item.workName }}
             />
           )
         }

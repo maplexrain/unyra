@@ -191,7 +191,7 @@ export function RoleChatView({
             const hasMedia = Boolean(
               m.attachments?.images?.length || (m.attachments?.files ?? []).some((f) => isVideoFile(f)),
             )
-            const bubbleVisible = Boolean(m.text.trim() || m.detail || hasMedia || m.delivery)
+            const bubbleVisible = Boolean(m.text.trim() || hasMedia || m.delivery)
             return (
               <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
                 {avatarOf(m)}
@@ -231,8 +231,9 @@ export function RoleChatView({
                     />
                   ) : bubbleVisible ? (
                     <div
+                      data-role-bubble
                       className={
-                        'relative max-w-full whitespace-pre-wrap break-words rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed ' +
+                        'relative max-w-full break-words rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed ' +
                         bubbleBg +
                         (mine ? ' rounded-tr-sm' : ' rounded-tl-sm')
                       }
@@ -246,7 +247,6 @@ export function RoleChatView({
                       />
                       <BubbleBody
                         text={m.text}
-                        detail={m.detail}
                         names={mentionNames}
                         labels={{ 用户: userName }}
                         tone={mine ? 'user' : 'agent'}

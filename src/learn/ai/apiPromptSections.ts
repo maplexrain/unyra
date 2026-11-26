@@ -1,5 +1,5 @@
 /**
- * 一位 role 的 **api 提示词**：role 层只有固定执行基座（tmp / work / chat + compact），
+ * 一位 role 的 **api 提示词**：role 层只有固定执行基座（tmp / work / chat / agent + compact），
  * 另附一段 work 能力摘要（按 WORK_API_PLANES 派生，只用于判断该派什么活）。
  *
  * 领域 API、语法与工作流规程全部属于 work 层（见 workSystem）：role 只需要知道
@@ -85,7 +85,7 @@ export function workDelegationSectionFor(role: AgentProfileId): string {
     '',
     '方法由 work 用 `api.<组>.__help()` 现查；你只判断该不该派、派给哪个 work。',
     '',
-    '**这些 api 不在 role 的沙箱里**：role 只有 `tmp / work / chat` + `compact` + `help`，直接调用会被判「没有这个 api」；你只能 `api.work.create` / `api.work.send` 派，不能直接调。work 再用 `api.host.send` 交回。',
+    '**这些 api 不在 role 的沙箱里**：role 只有 `tmp / work / chat / agent` + `compact` + `help`，直接调用会被判「没有这个 api」；你只能 `api.work.create` / `api.work.send` 派，不能直接调。work 再用 `api.host.send` 交回。',
   ]
     .filter((part) => part !== '')
     .join('\n')

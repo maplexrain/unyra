@@ -510,10 +510,11 @@ export function Composer(props: ComposerProps) {
       )}
       <div
         ref={cardRef}
+        data-private-composer
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
-        className={`rounded-2xl border bg-card shadow-sm transition ${
+        className={`rounded-2xl border bg-transparent shadow-sm transition ${
           dragOver || chipHover
             ? 'border-seal/60 ring-2 ring-seal/20'
             : 'border-line focus-within:border-seal/50 focus-within:ring-2 focus-within:ring-seal/10'

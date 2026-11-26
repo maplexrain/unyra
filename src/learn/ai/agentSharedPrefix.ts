@@ -6,7 +6,7 @@
  * 执行机制与沙箱纪律、通用纪律、说话方式、role 协作、通道、compact 规程。
  *
  * api 速查**不塞进 P0**，而是紧随 P0 拆成两段：
- * - **固定组**（help / compact + tmp / work / chat）是六位 role 的交集，逐字节一致，
+ * - **固定组**（help / compact + tmp / work / chat / agent）是六位 role 的交集，逐字节一致，
  *   跨 role 缓存前缀能从 P0 一路命中到固定组末尾；
  * - **非固定组**按 AGENT_API_PLANES 的实际持面渲染（apiDocKeysFor），没持有的组连索引都
  *   不出现；引用/交付纪律（CHIP_QUOTE_GUIDE / DELIVERY_LEDGER_GUIDE）跟着持有拼在后面。
