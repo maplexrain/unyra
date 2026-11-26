@@ -150,7 +150,6 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
       : ''
     const title = (/^新文档( \d+)?$/.test(node.title) && portLabel ? portLabel : node.title)
     const excerpt = body ? plainText(body).slice(0, 120) || body.replace(/\s+/g, ' ').slice(0, 120) : ''
-    const isRoot = docId === goal.rootNodeId
     const p: Pending = {
       card: {
         uuid: node.id,
@@ -159,7 +158,6 @@ export function deriveCanvas(store: LearnStore, goalId: string, saved: Structure
         subtitle: body ? `${body.length} 字` : '还没有正文',
         ...(excerpt ? { excerpt } : {}),
         ...(body ? {} : { blank: true }),
-        ...(isRoot ? { entry: true as const } : {}),
       },
       depth: 1,
       anchorY: 0,

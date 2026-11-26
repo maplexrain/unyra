@@ -72,6 +72,7 @@ function makeManager(
   stream: WorkManagerDeps['stream'],
   calls: string[] = [],
   roleMessage: WorkManagerDeps['roleMessage'] = () => null,
+  extra: Partial<WorkManagerDeps> = {},
 ) {
   let works: WorkSession[] = []
   const deliveries: Array<{ text: string; auto?: boolean }> = []
@@ -90,6 +91,7 @@ function makeManager(
     stream,
     onEvent: () => {},
     onRunEnd: () => {},
+    ...extra,
   })
   manager.setTurn({ sandbox: sandboxBase(calls), provider, model: 'test-model', contextWindow: 100_000 })
   return { manager, works: () => works, deliveries, outbound }
@@ -134,6 +136,43 @@ describe('work.send 与交付', () => {
     expect(short.runs).toBe(1)
     expect(short.recentExecutes).toEqual([])
   })
+
+  it('bindMessageId 可选绑定一条通道消息，运行状态从 running 同步到完成', async () => {
+    const { stream } = scriptedStream([{ match: '查勾股', hops: [{ content: '勾股定理的结论与来源。' }] }])
+    const bound: Array<{ messageId: string; status: string }> = []
+    const updates: Array<{ messageId: string; workId: string; patch: { status?: string } }> = []
+    const { manager, works } = makeManager(stream, [], () => null, {
+      bindWorkMessage: (messageId, binding) => {
+        bound.push({ messageId, status: binding.status })
+        return { ok: true }
+      },
+      updateWorkBinding: (messageId, workId, patch) => {
+        updates.push({ messageId, workId, patch })
+      },
+    })
+    manager.api.create({ name: '调研-1' })
+    const r = manager.api.send({ name: '调研-1', text: '查勾股定理', bindMessageId: 'm-channel' })
+    expect(r).toMatchObject({ ok: true, mode: 'started' })
+    expect(bound).toEqual([{ messageId: 'm-channel', status: 'running' }])
+    await tick()
+    await tick()
+    expect(works()[0]!.status).toBe('idle')
+    expect(updates.some((u) => u.messageId === 'm-channel' && u.patch.status === 'idle')).toBe(true)
+  })
+
+  it('绑定失败时整笔 send 拒绝，不留“任务已收”的回执', async () => {
+    const { stream } = scriptedStream([])
+    const { manager, works, outbound } = makeManager(stream, [], () => null, {
+      bindWorkMessage: () => ({ ok: false, error: '这条消息不在本通道里' }),
+      updateWorkBinding: () => {},
+    })
+    manager.api.create({ name: '调研-1' })
+    const r = manager.api.send({ name: '调研-1', text: '查勾股定理', bindMessageId: 'm-gone' })
+    expect(r).toMatchObject({ ok: false })
+    expect(outbound).toEqual([])
+    expect(works()[0]!.messages).toEqual([])
+  })
+
 
   it('role 用群聊抬头 id 引用带图消息：work.send 能解析并把附件引用落进 work', async () => {
     const groupMessage: ConversationMessage = {

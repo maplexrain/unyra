@@ -278,7 +278,7 @@ export function CanvasMinimap({
       const w = cardWidthOf(c.kind) * sx
       const h = height(c) * sy
       const radius = Math.min(3 * sx, w / 2)
-      const hollow = !!c.blank || (c.kind === 'doc' && !c.entry && !hasIncoming.has(c.uuid))
+      const hollow = !!c.blank || (c.kind === 'doc' && !hasIncoming.has(c.uuid))
 
       ctx.beginPath()
       ctx.roundRect(x, y, w, h, radius)

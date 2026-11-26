@@ -394,8 +394,8 @@ export default memo(function MindmapView({
   // 因为主题块有八套、其中五套是浅色——只有 dark 那一套需要换值。
   const isDark = usePrefersDark()
 
-  const isRootGoal = store.goals.some((g) => g.rootNodeId === node.id)
-  const goalBadge = isRootGoal ? t('总目标') : t('阶段目标')
+  // 大纲树的根只是当前视图选择的文档，不再有“总目标 / 阶段目标”的根语义
+  const goalBadge = t('根文档')
 
   return (
     <div

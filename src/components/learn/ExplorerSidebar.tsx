@@ -86,6 +86,8 @@ interface Props {
   onNewGoal: () => void
   onImportGoal?: () => void
   onDeleteNode: (nodeId: string) => void
+  /** 显式删除整个学习目标（目标行菜单；与删节点分开） */
+  onDeleteGoal: (goalId: string) => void
   /** 在系统文件管理器里定位该节点的正文文件（节点右键菜单） */
   onRevealNode: (nodeId: string) => void
   /** 定位工作区目录里的真实文件 / 子目录（docs/…/workspace/…，见 learn/workspace） */
@@ -138,6 +140,7 @@ function ExplorerSidebarComponent({
   onNewGoal,
   onImportGoal,
   onDeleteNode,
+  onDeleteGoal,
   onRevealNode,
   onRevealWs,
   onOpenWs,
@@ -539,6 +542,7 @@ function ExplorerSidebarComponent({
           onRevealWs={onRevealWs}
           ws={ws}
           onDeleteNode={onDeleteNode}
+          onDeleteGoal={onDeleteGoal}
           onRemoveLocal={onRemoveLocal}
           onRevealLocal={onRevealLocal}
           onStartRename={(nodeId, name) => setRenaming({ nodeId, name })}

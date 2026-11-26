@@ -34,6 +34,11 @@ export interface WorkSendInput {
   text?: string
   /** 引用 role 会话里的用户消息 id，连同附件转发 */
   messageId?: string
+  /**
+   * 可选：把这次运行的实时状态挂在某个通道消息上（私聊通道或群聊都算）。
+   * 只是展示绑定，不影响任务内容；不传也能正常发。
+   */
+  bindMessageId?: string
   /** 随任务一起带过去的附件（chat.send 到 work 通道时用） */
   images?: MessageImage[]
   files?: MessageFile[]

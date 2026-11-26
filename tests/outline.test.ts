@@ -79,10 +79,12 @@ describe('moveNode：迁移节点到另一个节点之下', () => {
     expect(r.store.edges.some((e) => e.from === 'n2' && e.to === 'n3')).toBe(false)
   })
 
-  it('目标的根不能移动', () => {
-    const r = moveNode(fixture(), 'n1', 'n2')
-    expect(r.moved).toBe(false)
-    expect(r.message).toContain('总目标')
+  it('旧根文档没有特殊身份：可以移到同目标的另一个节点之下', () => {
+    const s = fixture()
+    s.nodes.push(makeNode({ id: 'n4', title: '级数' }))
+    const r = moveNode(s, 'n1', 'n4')
+    expect(r.moved).toBe(true)
+    expect(r.store.edges.some((e) => e.from === 'n4' && e.to === 'n1')).toBe(true)
   })
 
   it('不能挂到自己的下级之下（成环被拒）', () => {
@@ -242,18 +244,21 @@ describe('撤回：捕获与恢复和删除级联互逆', () => {
     expect(s.tmp.n3?.k.value).toBe('中间数据')
   })
 
-  it('删目标是根：整棵子树、目标、会话都回来', () => {
+  it('删旧根文档只删这个节点：目标、会话都在，锚点改派；撤回能复原锚点', () => {
     let s = fixture()
     const entry = captureNodeDelete(s, 'n1')
     if (!entry) throw new Error('captureNodeDelete 应当成功')
     s = deleteNode(s, 'n1')
-    expect(s.goals.some((g) => g.id === 'g1')).toBe(false)
-    expect(s.conversations.some((c) => c.id === 'c1')).toBe(false)
+    expect(s.goals.some((g) => g.id === 'g1')).toBe(true)
+    expect(s.conversations.some((c) => c.id === 'c1')).toBe(true)
+    expect(s.nodes.filter((n) => n.goalId === 'g1').length).toBe(2)
+    expect(s.goals[0]?.rootNodeId).toBe('n2')
     const r = applyUndo(s, entry)
     expect(r.ok).toBe(true)
     s = r.store
     expect(s.goals.some((g) => g.id === 'g1')).toBe(true)
     expect(s.nodes.filter((n) => n.goalId === 'g1').length).toBe(3)
+    expect(s.goals[0]?.rootNodeId).toBe('n1')
     expect(s.conversations.some((c) => c.id === 'c1')).toBe(true)
   })
 

@@ -58,7 +58,7 @@ function makeStore(): LearnStore {
 }
 
 describe('deriveCanvas：卡片就是节点、连线全部派生', () => {
-  it('每份实体一张卡：入口不再是独立的卡——根文档带 entry 徽章；uuid 直接对上实体', () => {
+  it('每份实体一张卡：不再有入口卡 / 入口徽章；uuid 直接对上实体', () => {
     const view = deriveCanvas(makeStore(), 'g1', undefined)
     const kinds = Object.fromEntries(view.cards.map((c) => [c.uuid, c.kind]))
     expect(kinds[entryUuid('r')]).toBeUndefined()
@@ -71,10 +71,9 @@ describe('deriveCanvas：卡片就是节点、连线全部派生', () => {
     expect(kinds['exam1']).toBe('exam')
     // 根 + 根的大纲 + 子文档 + 笔记 + 超级文档 + 试卷 = 6
     expect(view.cards).toHaveLength(6)
-    // 入口徽章挂在根文档身上，一张图有且只有一个
-    const byUuid = Object.fromEntries(view.cards.map((c) => [c.uuid, c]))
-    expect(byUuid['r'].entry).toBe(true)
-    expect(view.cards.filter((c) => c.entry).length).toBe(1)
+    // 根文档只是一份普通文档：没有 entry 徽章，也没有任何卡带 entry
+    expect(view.cards.find((c) => c.uuid === 'r')!.entry).toBeUndefined()
+    expect(view.cards.some((c) => c.entry)).toBe(false)
   })
 
   it('连线全派生：大纲→子文档（树边）、文档→大纲与挂件（归属）；入口不再是线的一端', () => {
@@ -159,12 +158,12 @@ describe('deriveCanvas：坐标以存过的为准，没存的自动铺排（确�
     }
   })
 
-  it('根文档存过坐标就用存的（入口徽章跟着它走，不再有独立的入口卡）', () => {
+  it('根文档存过坐标就用存的（它只是普通文档，没有入口徽章）', () => {
     const saved: StructureMap = { version: 2, positions: { r: { x: 900, y: 100 } } }
     const view = deriveCanvas(makeStore(), 'g1', saved)
     const root = view.cards.find((c) => c.uuid === 'r')!
     expect(root.x).toBe(900)
-    expect(root.entry).toBe(true)
+    expect(root.entry).toBeUndefined()
   })
 
   it('游离文档（摘了线）也在画布上：按深度补铺，不凭空消失', () => {

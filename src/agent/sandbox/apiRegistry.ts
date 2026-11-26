@@ -587,7 +587,7 @@ status 只回执行轨迹的 execute 标题，不回工具参数与正文；要�
       a('stop', 'api.work.stop(name)', '强制停止当前 work 轮次', '中止正在跑的那一轮，保留 work 的上下文；之后可以再 work.send 续跑。', `await api.work.stop("调研-1")`),
       a('create', 'api.work.create({ name? })', '创建 work 会话', 'name 可命名，省略时系统给 work-N；同一 role 内重名会被拒绝。创建时固化该 role 的 work 系统提示词。', `const w = await api.work.create({ name: "调研-1" })`, { trap: '先 list 看有没有能接上的旧 work；新建会从空上下文重读材料，别把小任务重复开成新会话' }),
       a('kill', 'api.work.kill(name)', '删除 work 会话', '先中止当前轮，再把会话与上下文一起删除；不可恢复。', `await api.work.kill("调研-1")`, { trap: 'kill 是删除，不是停止；只想保留上下文续跑请用 stop' }),
-      a('send', 'api.work.send({ name, text?, messageId? })', '给 work 发任务或追问', 'text 是任务全文；messageId 可直接引用 role 会话里的用户消息（通道抬头 id: 后面的信封 id 也算，群聊里形如 g-...；连同附件转发，并标注来源）。work 空闲就起一轮，运行中则排到跳边界注入。', `await api.work.send({ name: "调研-1", messageId: "m_123" })`, { trap: 'messageId 只能引用当前 role 会话里的消息（含通道抬头 id）；跨 role 或查不到会整笔拒绝' }),
+      a('send', 'api.work.send({ name, text?, messageId?, bindMessageId? })', '给 work 发任务或追问', 'text 是任务全文；messageId 可直接引用 role 会话里的用户消息（通道抬头 id: 后面的信封 id 也算，群聊里形如 g-...；连同附件转发，并标注来源）。bindMessageId 可选：把这轮 work 的实时状态挂到某条通道消息上（这段私聊或同目标群聊里的消息都行），该消息底部会出现一条「work 运行中 / 已完成 / 出错」状态条，含耗时与最近一次执行；不绑也能正常发。work 空闲就起一轮，运行中则排到跳边界注入。', `await api.work.send({ name: "调研-1", messageId: "m_123", bindMessageId: "m_123" })`, { trap: 'messageId 只能引用当前 role 会话里的消息（含通道抬头 id）；bindMessageId 可指向同目标群聊消息，但查不到会整笔拒绝。只引用转发、不挂状态时不要填 bindMessageId。' }),
     ],
   ),
 

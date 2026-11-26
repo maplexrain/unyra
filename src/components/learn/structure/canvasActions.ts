@@ -186,7 +186,7 @@ export function useCanvasActions({
         onToast?.(t('这个画布没有接入删除通道'))
         return
       }
-      // 删根文档 = 删整个目标：这是设计内语义，但绝不能从一张卡的删除键上悄悄发生——
+      // 节点没有“根”身份：删一张卡只删这个节点，绝不顺带删目标；目标删除走显式目标入口
       // 通道里会转接两档确认（与资源管理器同一条路），这里照常走统一通道
       report(onDeleteNode(uuid))
       setSelectedId(null)

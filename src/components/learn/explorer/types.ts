@@ -156,6 +156,8 @@ export interface RowMenuProps {
   /** 工作区的新建与改名（真实文件 / 目录） */
   ws: WsActions
   onDeleteNode: (nodeId: string) => void
+  /** 显式删除整个学习目标（目标行菜单；与删一个文档节点彻底分开） */
+  onDeleteGoal: (goalId: string) => void
   onRemoveLocal: (path: string) => void
   onRevealLocal: (path: string) => void
   onStartRename: (nodeId: string, name: string) => void

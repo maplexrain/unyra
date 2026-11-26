@@ -3,7 +3,8 @@
  * 手势（Gesture）：中键或空格+左键平移、节点拖动（含多选整组拖与垃圾桶删除）、
  * 连线（大纲目标项菱形口认领 portKey / 圆把手普通连线）、palette 落地（按类型认宿主，
  * 离开过列表才建节点）、拉框多选。另有双击（适应画布 / 聚焦阅读位）、右键菜单、
- * 键盘（Escape / Ctrl+Z / Delete）、空格抓手、候选落点高亮（candidateIds）。
+ * 键盘（Escape / Delete）、空格抓手、候选落点高亮（candidateIds）。Ctrl+Z 由
+ * 工作区的 useExplorerUndo 在 window 上统一接（画布不再自己处理，否则一次按键会撤两步）。
  * port 认领逻辑（portKey 落树边只下游侧）是敏感区，搬运一行未动。
  */
 
@@ -62,7 +63,6 @@ export interface CanvasPointerDeps {
   toWorld: (clientX: number, clientY: number) => { x: number; y: number }
   isOverTrash: (clientX: number, clientY: number) => boolean
   /* ---------- useCanvasActions ---------- */
-  undo: () => void
   report: (r: ChannelResult) => boolean
   removeNode: (uuid: string) => void
   onSlotClick: (parentId: string, key: string) => void
@@ -114,7 +114,6 @@ export function useCanvasPointer({
   focusCard,
   toWorld,
   isOverTrash,
-  undo,
   report,
   removeNode,
   onSlotClick,
@@ -814,11 +813,6 @@ export function useCanvasPointer({
        * 按键会冒上来。不拦的话，写注释时按个退格就会把**当前选中的节点**删掉。
        */
       if (isTextEntryTarget(e.target)) return
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        e.preventDefault()
-        undo()
-        return
-      }
       if (e.key !== 'Delete' && e.key !== 'Backspace') return
       if (selectedEdge) {
         e.preventDefault()
@@ -838,7 +832,7 @@ export function useCanvasPointer({
       setMultiIds(null)
       setMenu(null)
     },
-    [cards, undo, onToast, removeNode, multiIds, onDisconnect, report, selectedEdge, selectedId, setMultiIds, setSelectedId, setMenu, setSelectedEdge, tourOpen],
+    [removeNode, multiIds, onDisconnect, report, selectedEdge, selectedId, setMultiIds, setSelectedId, setMenu, setSelectedEdge, tourOpen],
   )
   return {
     onPointerDown,

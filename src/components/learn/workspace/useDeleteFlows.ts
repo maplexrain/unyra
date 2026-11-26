@@ -68,22 +68,23 @@ export function useDeleteFlows({
   /** 删除前先弹确认框，避免误删：看一眼「删的是哪个、连带删掉多少」再点头 */
   const requestRemoveNode = (nodeId: string) => {
     const s = getLatest()
-    const goal = s.goals.find((g) => g.id === nodeId || g.rootNodeId === nodeId)
+    // 只有显式目标是目标（资源管理器目标行传 goal.id）；文档节点即便曾是旧根，也只是节点
+    const goal = s.goals.find((g) => g.id === nodeId)
     if (goal) {
       const goalTitle =
         goal.title ||
         goal.question ||
         (goal.rootNodeId ? nodeById(s, goal.rootNodeId)?.title : '') ||
         t('未命名目标')
-      setPendingDelete({ nodeId: goal.id, title: goalTitle, isRoot: true, count: goalSubtreeSize(goal.id) })
+      setPendingDelete({ nodeId: goal.id, title: goalTitle, kind: 'goal', count: goalSubtreeSize(goal.id) })
       return
     }
     const node = nodeById(s, nodeId)
     if (!node) return
-    setPendingDelete({ nodeId, title: node.title, isRoot: false, count: 1 })
+    setPendingDelete({ nodeId, title: node.title, kind: 'node', count: 1 })
   }
 
-  /** 删除目标/节点：含全部下级知识点、对话与试卷，先确认再删；Ctrl+Z 可撤回 */
+  /** 删除学习目标/节点：目标含全部下级知识点、对话与试卷；节点只删自己。先确认再删；Ctrl+Z 可撤回 */
   const commitRemoveNode = () => {
     const pending = pendingDelete
     if (!pending) return
@@ -92,11 +93,11 @@ export function useDeleteFlows({
     const entry = captureNodeDelete(getLatest(), pending.nodeId)
     if (entry) pushUndo(entry)
     // 目标级删除走 deleteGoal，普通节点走 deleteNode
-    const nextStore = pending.isRoot
+    const nextStore = pending.kind === 'goal'
       ? deleteGoal(getLatest(), pending.nodeId)
       : deleteNode(getLatest(), pending.nodeId)
     set(fixAgentTabsAfter(nextStore))
-    onToast(pending.isRoot ? t('已删除该学习目标，可按 Ctrl+Z 撤回') : t('已删除该节点，可按 Ctrl+Z 撤回'))
+    onToast(pending.kind === 'goal' ? t('已删除该学习目标，可按 Ctrl+Z 撤回') : t('已删除该节点，可按 Ctrl+Z 撤回'))
   }
 
   return {

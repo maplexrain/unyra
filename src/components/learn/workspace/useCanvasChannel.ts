@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef } from 'react'
 import type { DocView, FileNodeKind, KnowledgeNode, LearnStore, TabRef } from '../../../learn/types'
 import { addConversation, nodeById, normalizeKey, removeEdge, resolveDisplayedConversation } from '../../../learn/graph'
-import { syncGoalOutlineTabs } from '../../../learn/groups'
 import { NodeService, docIdOfOutlineUuid, type GNodeKind } from '../../../learn/nodeKinds'
 import { outlineByMember } from '../../../learn/outline'
 import { noteById, writeNoteSummary } from '../../../learn/notes'
@@ -9,6 +8,7 @@ import { generateNoteSummary } from '../../../learn/noteSummary'
 import type { StructureMap } from '../../../learn/structure'
 import { resolveProjectRoot } from '../../../learn/projects'
 import { examAttempted, type Exam } from '../../../learn/exam'
+import { captureCanvasDelete, type ExplorerUndo } from '../../../learn/undo'
 import { goalDirOf } from '../../../learn/static/location'
 import { FILES_DIR } from '../../../learn/layout'
 import { userAbsPath } from '../../../lib/storage'
@@ -21,11 +21,12 @@ import { t } from '../../../i18n'
 type AgentApi = ReturnType<typeof useAgent>
 type StartersApi = ReturnType<typeof useWorkflowStarters>
 
-/** 删除目标/节点的确认载荷（与宿主的删除确认流共用一份形状） */
+/** 删除节点 / 学习目标的确认载荷（与宿主的删除确认流共用一份形状） */
 export interface PendingNodeDelete {
   nodeId: string
   title: string
-  isRoot: boolean
+  /** goal = 只接受显式目标 id 的整目标删除；node = 普通文档节点，绝不升级成删目标 */
+  kind: 'node' | 'goal'
   count: number
 }
 
@@ -47,6 +48,8 @@ export interface CanvasChannelDeps {
   setPendingDelete: (p: PendingNodeDelete | null) => void
   setPendingExamDelete: (e: Exam | null) => void
   setExamDeleteStage: (s: 'warn' | 'final') => void
+  /** 撤回栈：画布删除和资源管理器共用同一个 Ctrl+Z */
+  pushUndo: (entry: ExplorerUndo) => void
 }
 
 /* ---------- 结构画布通道（建 / 删 / 连 / 改名，与 agent 的 api.node 同一条 NodeService 路） ---------- */
@@ -67,6 +70,7 @@ export function useCanvasChannel({
   setPendingDelete,
   setPendingExamDelete,
   setExamDeleteStage,
+  pushUndo,
 }: CanvasChannelDeps) {
   const generateTeachingDoc = useCallback(
     (targetNode: KnowledgeNode, hint?: string) => {
@@ -113,7 +117,8 @@ export function useCanvasChannel({
     (goalId: string, next: StructureMap) => {
       const s = getLatest()
       const structure = { ...(s.structure ?? {}) }
-      if (Object.keys(next.positions).length) structure[goalId] = next
+      // 坐标可以为空，但 viewMode / treeRootId 是视图选择，必须留下来（否则切一次树就丢根）
+      if (Object.keys(next.positions).length || next.viewMode || next.treeRootId) structure[goalId] = next
       else delete structure[goalId]
       set({ ...s, structure: Object.keys(structure).length ? structure : undefined })
     },
@@ -177,19 +182,24 @@ export function useCanvasChannel({
         setExamDeleteStage(examAttempted(target) ? 'warn' : 'final')
         return { ok: true as const }
       }
-      // 删根文档 = 删整个目标（根就是目标的骨架）：从画布的删除键触发也必须走两档确认
-      const goal = getLatest().goals.find((g) => g.id === uuid || g.rootNodeId === uuid)
+      // 只有显式目标 id 才删整个目标；rootNodeId 已不是“根”，删那份文档只删节点
+      const goal = getLatest().goals.find((g) => g.id === uuid)
       if (goal) {
         const node = goal.rootNodeId ? nodeById(getLatest(), goal.rootNodeId) : null
         const title = goal.title || goal.question || node?.title || uuid
-        setPendingDelete({ nodeId: goal.id, title, isRoot: true, count: goalSubtreeSize(goal.id) })
+        setPendingDelete({ nodeId: goal.id, title, kind: 'goal', count: goalSubtreeSize(goal.id) })
         return { ok: true as const }
       }
+      // 先按删除前那一刻备货；服务真的删成功后才入栈，避免“删失败但撤回栈里多一条”
+      const entry = captureCanvasDelete(getLatest(), uuid)
       const r = makeNodeService().delete(uuid)
-      if ('ok' in r) dropPositionOf(uuid)
+      if ('ok' in r && r.ok) {
+        if (entry) pushUndo(entry)
+        dropPositionOf(uuid)
+      }
       return r
     },
-    [getLatest, makeNodeService, dropPositionOf, onToast, exam.live, setPendingExamDelete, setExamDeleteStage, setPendingDelete, goalSubtreeSize],
+    [getLatest, makeNodeService, dropPositionOf, onToast, exam.live, setPendingExamDelete, setExamDeleteStage, setPendingDelete, goalSubtreeSize, pushUndo],
   )
 
   const canvasConnect = useCallback(
@@ -349,29 +359,6 @@ export function useCanvasChannel({
   )
 
   /**
-   * 右键「设为入口」：把一份**没有上级**的文档立为那张图的入口（目标的根）。
-   * 一张图有且只有一个——换入口就是旧的退位（它还挂在图上，多半从此变成游离卡）。
-   */
-  const canvasSetEntry = useCallback(
-    (docUuid: string) => {
-      const s = getLatest()
-      const node = nodeById(s, docUuid)
-      if (!node) return { error: t('这份文档已经不在了') }
-      const goal = s.goals.find((g) => g.id === node.goalId)
-      if (!goal) return { error: t('这个文档不属于任何学习目标') }
-      if (goal.rootNodeId === docUuid) return { error: t('它已经是入口了') }
-      if (s.edges.some((e) => e.to === docUuid)) {
-        return { error: t('「{0}」已经有上级了——只有没有上级的文档能立为入口', node.title) }
-      }
-      const nextGoals = s.goals.map((g) => (g.id === goal.id ? { ...g, rootNodeId: docUuid, updatedAt: Date.now() } : g))
-      const nextDocArea = syncGoalOutlineTabs(s.docArea, [{ id: goal.id, rootNodeId: docUuid }])
-      set({ ...s, goals: nextGoals, docArea: nextDocArea })
-      return { ok: true, note: t('已把「{0}」立为入口：这门课从这里开始（原入口文档还在图上）', node.title) }
-    },
-    [getLatest, set],
-  )
-
-  /**
    * 「生成大纲导读」（**大纲卡**右键菜单——导读生在大纲本体上，不是教学文档上）：
    * 给已经写成的大纲补一段对它本身的讲解（guide，只写导读、不动 intro 与 children）。
    * 规矩在「大纲导读」提示词模块里；只读的导读页签**当场打开**——生成过程中它跟着
@@ -484,7 +471,6 @@ export function useCanvasChannel({
       onDeleteNode: canvasDeleteNode,
       onConnect: canvasConnect,
       onDisconnect: canvasDisconnect,
-      onSetEntry: canvasSetEntry,
       onCreateChildDoc: createChildDoc,
       onRenameNote: canvasRenameNote,
       onAddOutlineEntry: canvasAddOutlineEntry,
@@ -589,7 +575,7 @@ export function useCanvasChannel({
       },
       onGenerateClassroom: (classroomUuid: string) => startGenerateClassroom(classroomUuid),
     }),
-    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, canvasSetEntry, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startGenerateClassroom, startOutlineGuide, openOutlineGuide, startNoteSummary, makeNodeService, openTab, getLatest, set, store, onToast],
+    [canvasCreateNode, canvasDeleteNode, canvasConnect, canvasDisconnect, createChildDoc, canvasRenameNote, canvasAddOutlineEntry, canvasRenameOutlineEntry, canvasDeleteOutlineEntry, generateDocForNode, startPrereqOutline, startGenerateClassroom, startOutlineGuide, openOutlineGuide, startNoteSummary, makeNodeService, openTab, getLatest, set, store, onToast],
   )
 
   return { requestGenerateDoc, updateStructure, canvasChannel }

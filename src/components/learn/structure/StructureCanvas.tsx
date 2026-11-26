@@ -149,8 +149,6 @@ export interface StructureCanvasProps {
   onConnect?: (fromUuid: string, toUuid: string, portKey?: string) => ChannelResult
   /** 断开一条连线（= 解绑 / 拆边；两端实体都不动） */
   onDisconnect?: (fromUuid: string, toUuid: string) => ChannelResult
-  /** 右键「设为入口」：把一份没有上级的文档立为本图的入口（目标的根；全图有且只有一个） */
-  onSetEntry?: (docUuid: string) => ChannelResult
   /** 点大纲目标项：挂一份带标题的空文档（统一通道建实体），返回新文档 uuid */
   onCreateChildDoc?: (ownerNodeId: string, title: string, portKey?: string) => string | null
   /** 改笔记名（宿主走笔记节点的 editContent，页签跟着改） */
@@ -209,7 +207,6 @@ export const StructureCanvas = memo(function StructureCanvas({
   onDeleteNode,
   onConnect,
   onDisconnect,
-  onSetEntry,
   onCreateChildDoc,
   onRenameNote,
   onAddOutlineEntry,
@@ -583,7 +580,6 @@ export const StructureCanvas = memo(function StructureCanvas({
     focusCard,
     toWorld,
     isOverTrash,
-    undo,
     report,
     removeNode,
     onSlotClick,
@@ -850,9 +846,6 @@ export const StructureCanvas = memo(function StructureCanvas({
         <CanvasMenu
           menu={menu}
           menuCard={menuCard}
-          store={store}
-          goalId={goalId}
-          edges={edges}
           menuText={menuText}
           setMenuText={setMenuText}
           menuTitleText={menuTitleText}
@@ -861,7 +854,6 @@ export const StructureCanvas = memo(function StructureCanvas({
           setMenuFileKind={setMenuFileKind}
           setMenu={setMenu}
           removeNode={removeNode}
-          onSetEntry={onSetEntry}
           report={report}
           onGenerateOutline={onGenerateOutline}
           onGenerateOutlineGuide={onGenerateOutlineGuide}

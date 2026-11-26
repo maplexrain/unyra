@@ -52,6 +52,7 @@ export function RowMenu({
   onRevealWs,
   ws,
   onDeleteNode,
+  onDeleteGoal,
   onRemoveLocal,
   onRevealLocal,
   onStartRename,
@@ -209,11 +210,11 @@ export function RowMenu({
           <button
             type="button"
             role="menuitem"
-            onClick={run(() => onDeleteNode(target.node.id))}
+            onClick={run(() => onDeleteGoal(target.node.goalId))}
             className={MENU_ITEM + ' text-seal-deep hover:bg-seal/10'}
           >
             <Trash2 size={13} className="shrink-0" />
-            {t('删除')}
+            {t('删除学习目标')}
           </button>
         </>
       )}

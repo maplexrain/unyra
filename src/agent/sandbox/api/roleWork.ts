@@ -82,9 +82,15 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
       const name = asText(a.name).trim()
       const text = asText(a.text).trim()
       const messageId = asText(a.messageId).trim()
+      const bindMessageId = asText(a.bindMessageId).trim()
       if (!name) return { ok: false, error: 'work.send 需要 name' }
       if (!text && !messageId) return { ok: false, error: 'work.send 需要 text 或 messageId' }
-      const input: WorkSendInput = { name, ...(text ? { text } : {}), ...(messageId ? { messageId } : {}) }
+      const input: WorkSendInput = {
+        name,
+        ...(text ? { text } : {}),
+        ...(messageId ? { messageId } : {}),
+        ...(bindMessageId ? { bindMessageId } : {}),
+      }
       try {
         return await work.send(input)
       } catch (e) {

@@ -32,6 +32,7 @@ import { BubbleBody } from './BubbleBody'
 import { AskBubble } from './AskBubble'
 import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
 import { DeliveryBlock } from './DeliveryBlock'
+import { WorkBindingBadge } from './WorkBindingBadge'
 import { FollowLatestButton } from './MessageBubble'
 import { MessageContextMenu, type MessageMenuItem } from './MessageContextMenu'
 import { MessageMediaGrid } from './MessageMedia'
@@ -603,7 +604,7 @@ export function GroupChatPanel({
               const hasMedia = Boolean(
                 m.attachments?.images?.length || (m.attachments?.files ?? []).some((f) => isVideoFile(f)),
               )
-              const bubbleVisible = Boolean(m.text.trim() || hasMedia || m.delivery || commentEntry)
+              const bubbleVisible = Boolean(m.text.trim() || hasMedia || m.delivery || m.work || commentEntry)
               const ccNames = Array.from(
                 new Set([
                   ...(m.cc?.map((p) => agents.find((a) => a.id === p.id)?.name || p.name) ?? []),
@@ -726,6 +727,8 @@ export function GroupChatPanel({
                           images={m.attachments?.images}
                           files={m.attachments?.files}
                         />
+                        {/* work 绑定状态条：发起任务的那条消息下面直接看进度 */}
+                        {m.work ? <WorkBindingBadge binding={m.work} /> : null}
                         {/* 交付账嵌在气泡内侧底部，不再单独长成一个“交付气泡” */}
                         {m.delivery ? (
                           <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} />

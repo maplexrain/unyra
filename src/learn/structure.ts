@@ -49,6 +49,11 @@ export interface StructureMap {
   edgeStyle?: EdgeStyle
   /** 视图模式：'graph' (自由拓扑画布，默认) | 'tree' (大纲树视图/思维导图) */
   viewMode?: StructureViewMode
+  /**
+   * 大纲树用哪个文档节点当根。只是这个目标的视图选择，不是“目标的根”：
+   * 随时可以换成另一个文档；缺失 / 指向已删节点时由界面要求重新选择。
+   */
+  treeRootId?: string
 }
 
 export function emptyStructure(): StructureMap {
@@ -91,6 +96,7 @@ export function normalizeStructure(raw: unknown): StructureMap {
     positions?: unknown
     edgeStyle?: unknown
     viewMode?: unknown
+    treeRootId?: unknown
     nodes?: unknown
   }
 
@@ -125,6 +131,7 @@ export function normalizeStructure(raw: unknown): StructureMap {
 
   if (isEdgeStyle(src.edgeStyle)) out.edgeStyle = src.edgeStyle
   if (src.viewMode === 'graph' || src.viewMode === 'tree') out.viewMode = src.viewMode
+  if (typeof src.treeRootId === 'string' && src.treeRootId.trim()) out.treeRootId = src.treeRootId.trim()
   return out
 }
 
@@ -138,7 +145,7 @@ export function normalizeStructureBook(raw: unknown, goalIds: ReadonlySet<string
   for (const [goalId, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!goalIds.has(goalId)) continue
     const map = normalizeStructure(value)
-    if (Object.keys(map.positions).length || map.viewMode) out[goalId] = map
+    if (Object.keys(map.positions).length || map.viewMode || map.treeRootId) out[goalId] = map
   }
   return out
 }

@@ -1492,6 +1492,7 @@ export default function LearnWorkspace({
     setPendingDelete,
     setPendingExamDelete,
     setExamDeleteStage,
+    pushUndo,
   })
 
   const handleOutlineFocusHandled = useCallback(() => {
@@ -1790,7 +1791,7 @@ export default function LearnWorkspace({
         activeGoalId={tabGoalId}
         onNewGoal={startCreatingGoal}
         onImportGoal={() => void handleImportGoal()}
-        onDeleteNode={requestRemoveNode}
+        onDeleteNode={requestRemoveNode} onDeleteGoal={requestRemoveNode}
         onRevealNode={(nodeId) => void revealNodeFile(nodeId)}
         onRevealWs={(rel) => void revealWsFile(rel)}
         onOpenWs={openWsFile}
@@ -1958,7 +1959,6 @@ export default function LearnWorkspace({
         pendingSuperDelete={pendingSuperDelete}
         commitRemoveSuperDoc={commitRemoveSuperDoc}
         onCancelSuper={() => setPendingSuperDelete(null)}
-        getLatest={getLatest}
       />
 
       {/*

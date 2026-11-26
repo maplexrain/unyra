@@ -159,11 +159,11 @@ export function CanvasCards({
           const lifted = !!draft && (draft.id === card.uuid || (draft.moves !== undefined && card.uuid in draft.moves))
           /*
            * 树的上游：线可能落在文档卡上，也可能落在大纲卡上（接大纲的嵌套子级）。
-           * 没接进树的置灰提示（游离）；入口是根，天生没有上级。
+           * 没接进树的置灰提示（游离）；每张文档卡都可能有上游，没有“入口根”豁免。
            */
           // 性能优化：直接从 O(1) 索引查找
           const hasUpstream = upstreamEdgeSet.has(card.uuid) || upstreamEdgeSet.has(outlineUuid(card.uuid))
-          const unassigned = card.kind === 'doc' && !card.entry && !hasUpstream
+          const unassigned = card.kind === 'doc' && !hasUpstream
           // 性能优化：直接从预热缓存中获取
           const leafOwnerNodeId = leafOwnerCache.get(card.uuid) ?? null
 
@@ -865,8 +865,8 @@ export function CanvasCards({
                   style={{ top: EDGE_ANCHOR_Y }}
                 />
               )}
-              {/* 进线接口（左）：实心、不透明。入口不画；视频卡为顶层资源无上游，不该有进线点 */}
-              {card.kind !== 'entry' && !card.entry && (
+              {/* 进线接口（左）：实心、不透明。视频卡为顶层资源无上游，不该有进线点 */}
+              {card.kind !== 'entry' && (
                 <div
                   className="pointer-events-none absolute -left-[7.5px] h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 border-card bg-seal"
                   style={{ top: EDGE_ANCHOR_Y }}
