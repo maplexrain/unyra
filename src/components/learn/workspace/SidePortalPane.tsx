@@ -252,7 +252,12 @@ export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap 
 
     if (ref.kind === 'prompt') {
       return (
-        <PromptFileView agentId={ref.agentId} layer={ref.layer} fileId={ref.fileId} />
+        <PromptFileView
+          agentId={ref.agentId}
+          layer={ref.layer}
+          fileId={ref.fileId}
+          onBack={onClose}
+        />
       )
     }
 

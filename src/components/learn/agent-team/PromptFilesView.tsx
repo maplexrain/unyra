@@ -328,6 +328,13 @@ export function PromptFilesView({
             <span className="inline-flex shrink-0 items-center rounded bg-line/55 px-1.5 py-px text-[10px] text-ink-faint">
               {file.builtin ? t('内置') : scopeBadge(file.scope)}
             </span>
+            <span
+              data-prompt-file-chars
+              className="shrink-0 whitespace-nowrap text-[10.5px] tabular-nums text-ink-faint"
+              title={t('这份文件的字符数')}
+            >
+              {t('{0} 字符', file.content.length)}
+            </span>
             <button
               type="button"
               onClick={(e) => {
