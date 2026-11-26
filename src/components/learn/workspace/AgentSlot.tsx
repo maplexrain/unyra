@@ -757,7 +757,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
 
   return (
     <div
-      ref={containerRef}
+      ref={containerRef} data-agent-slot
       data-agent-roster-top={rosterTopBar ? 'true' : undefined}
       className={
         'flex h-full min-h-0 w-full overflow-hidden ' + (rosterTopBar ? 'flex-col' : 'flex-row')

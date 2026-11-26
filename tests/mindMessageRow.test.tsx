@@ -95,6 +95,65 @@ describe('MindMessageRow', () => {
     host.remove()
   })
 
+  it('外部 agent 消息铺满整行、去掉边框圆角，超过 400px 可展开/收起', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const longText = Array.from({ length: 40 }, (_, i) => `第 ${i + 1} 行正文`).join('\n')
+    const msg: ConversationMessage = {
+      id: 'm4',
+      role: 'user',
+      ts: 1_700_000_000_000,
+      parts: [{ type: 'text', text: longText }],
+      channel: {
+        channel: 'agent',
+        from: { kind: 'role', id: 'researcher', name: '调研龟' },
+        to: { kind: 'role', id: 'tutor', name: '导师龟' },
+        ts: 1_700_000_000_000,
+        envelopeId: 'e4',
+      },
+    }
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight')
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 900,
+    })
+    act(() => {
+      root.render(
+        createElement(MindMessageRow, {
+          m: msg,
+          agentName: '导师龟',
+          faded: false,
+          flash: false,
+          setBubblePreview: vi.fn(),
+        }),
+      )
+    })
+    const row = host.querySelector('[data-mind-message-id="m4"]')
+    expect(row?.getAttribute('data-mind-collapsible')).toBe('true')
+    expect(row?.getAttribute('data-mind-expanded')).toBe('false')
+    expect(row?.className).not.toContain('rounded-lg')
+    expect(row?.className).not.toContain('border')
+    expect(row?.querySelector('.max-h-\\[400px\\]')).not.toBeNull()
+    expect(row?.querySelector('.flex-1')).not.toBeNull()
+    const toggle = Array.from(row?.querySelectorAll('button') ?? []).find((b) =>
+      b.textContent?.includes('展开全文'),
+    )
+    expect(toggle).not.toBeUndefined()
+    act(() => {
+      toggle?.click()
+    })
+    expect(row?.getAttribute('data-mind-expanded')).toBe('true')
+    expect(row?.querySelector('.max-h-\\[400px\\]')).toBeNull()
+    expect(row?.textContent).toContain('收起')
+    if (original) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', original)
+    else delete (HTMLElement.prototype as any).scrollHeight
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
   it('思考与工具直接平铺，不再先收进过程组容器', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)

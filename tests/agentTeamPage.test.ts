@@ -749,8 +749,9 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     for (const title of ['身份', '提供商 · 模型', '思考强度', 'execute 开放的 api', '工作层的工作流', '系统提示词']) {
       expect(host.textContent).toContain(title)
     }
-    // 系统提示词只列文件项，不再展开全文
-    expect(host.querySelectorAll('pre')).toHaveLength(0)
+    // 系统提示词列文件项，并在下方显示运行时拼接后的预览
+    expect(host.querySelectorAll('pre')).toHaveLength(1)
+    expect(host.textContent).toContain('拼接后的提示词预览')
     expect(host.textContent).toContain('共同提示词 · 团队协作与沙箱执行基座')
     expect(host.textContent).toContain('固定组 API 能力面（全员共用）')
     expect(host.textContent).toContain('role 角色定位')
@@ -906,7 +907,7 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     host2.remove()
   })
 
-  it('系统提示词只列文件项：role/work 分层，不展开正文', () => {
+  it('系统提示词列文件项并显示拼接预览：role/work 分层', () => {
     const render = (profile: Partial<AgentProfile>, agentId: AgentTeamMode = 'tutor') => {
       const host = document.createElement('div')
       document.body.appendChild(host)
@@ -933,21 +934,21 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     }
 
     const tutor = render({ apiGroups: ['web'] } as AgentProfile)
-    expect(tutor.preCount).toBe(0)
+    expect(tutor.preCount).toBe(1)
+    expect(tutor.text).toContain('拼接后的提示词预览')
     expect(tutor.text).toContain('共同提示词 · 团队协作与沙箱执行基座')
     expect(tutor.text).toContain('固定组 API 能力面（全员共用）')
     expect(tutor.text).toContain('role 角色定位')
     expect(tutor.text).toContain('你的专属分工')
-    expect(tutor.text).not.toContain('你是「归一 Unyra」的导师龟')
 
     const examiner = render({}, 'examiner')
+    expect(examiner.preCount).toBe(1)
     expect(examiner.text).toContain('role 角色定位')
-    expect(examiner.text).not.toContain('【出卷】试卷命题（exam）')
 
     const free = render({}, 'free')
+    expect(free.preCount).toBe(1)
     expect(free.text).toContain('自由对话定位与页签说明')
     expect(free.text).toContain('核心边界与任务终止铁律（绝对红线）')
-    expect(free.text).not.toContain('api.web.search')
   })
 
   it('返回对话与恢复默认两个出口', () => {
@@ -1006,8 +1007,9 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     expect(host.querySelector('[data-api-add]')).toBeNull()
     expect(host.querySelector('button[aria-label="移除 web"]')).toBeNull()
     expect(host.textContent).toContain('没有接工作流通道')
-    // 自由聊天的系统提示词只列文件项，不含导师规程
-    expect(host.querySelector('pre')).toBeNull()
+    // 自由聊天的系统提示词也显示拼接预览；内容按 free 角色文件生成
+    expect(host.querySelector('pre')).not.toBeNull()
+    expect(host.textContent).toContain('拼接后的提示词预览')
 
     act(() => {
       root.unmount()

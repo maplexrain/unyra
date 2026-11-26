@@ -76,6 +76,8 @@ export interface MessageRowProps {
   goalId?: string
   /** 思维层：去掉聊天气泡与聊天操作，消息行头部另由 MindMessageRow 提供 */
   mind?: boolean
+  /** 思维层里铺满整行（外部 agent / work 消息不再受 450px 气泡宽度限制） */
+  fill?: boolean
 }
 
 /**
@@ -93,6 +95,7 @@ export const MessageRow = memo(function MessageRow({
   onOpenFile,
   goalId,
   mind = false,
+  fill = false,
 }: MessageRowProps) {
   useLocale()
   const fadedCls = faded ? ' opacity-55' : ''
@@ -118,7 +121,7 @@ export const MessageRow = memo(function MessageRow({
         <div
           className={
             mind
-              ? 'min-w-0 max-w-[450px]'
+              ? 'min-w-0 ' + (fill ? 'flex-1' : 'max-w-[450px]')
               : 'max-w-[450px] rounded-lg ' + (flash ? 'moji-msg-flash' : '')
           }
         >

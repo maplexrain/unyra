@@ -5,13 +5,11 @@
  * 于是那两个文件都能引用它而不互相 import（那会绕成环）。
  */
 
-import type { ReactNode } from 'react'
 import type {
   AgentPart,
   ConversationMessage,
   ContextSummary,
   MessageImage,
-  MessageUsage,
 } from '../../../agent/types'
 
 export interface MessageListProps {
@@ -53,12 +51,17 @@ export interface MessageListProps {
   agentName?: string
   /** 当前 role 的头像 id */
   agentAvatarId?: string
-  /** 当前 role 的 token 账：mind 顶部画上下文占用 / 累计消耗 */
-  usages?: MessageUsage[]
-  /** work 消息的内嵌折叠窗口（默认收起），由 AgentPanel 统一渲染在列表底部 */
-  workWindow?: ReactNode
-  /** 上下文摘要的标题主语（role 名），只影响文案 */
-  contextSubject?: string
+  /**
+   * work 消息：只用于思维列表的线性展示，按时间戳并入 role 消息之间。
+   * 它们不写回 conversation.messages，也不参与上下文。
+   */
+  workMessages?: WorkTimelineMessage[]
   /** 最近窗口的复位键：切换会话 / 目标时必须回到尾部，不沿用上一段的加载深度 */
   resetKey?: string
+}
+
+/** 思维列表里的一条 work 消息；work 元信息只影响显示，不进入上下文 */
+export interface WorkTimelineMessage {
+  m: ConversationMessage
+  work: { id: string; name: string }
 }

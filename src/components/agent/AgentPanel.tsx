@@ -24,7 +24,9 @@ import { PaceStrip } from './panel/PaceStrip'
 import { FollowLatestButton } from './panel/MessageBubble'
 import { WorkMenu } from './panel/WorkMenu'
 import { RoleChatView } from './panel/RoleChatView'
-import { InlineWorkWindow } from './panel/InlineWorkWindow'
+import { MindInspector } from './panel/MindInspector'
+import { mindInspectorVisible } from './panel/mindLayout'
+import type { WorkTimelineMessage } from './panel/MessageList'
 import { toolLabel } from './panel/toolLabel'
 import { useComposer } from './panel/useComposer'
 import { useMsgRail } from './panel/useMsgRail'
@@ -153,14 +155,11 @@ interface Props {
   tps: number | null
   /** 正在跑的这一轮到目前为止的账（每跳 usage 重算）：圆环的实时数据源，空闲时为 null */
   liveUsage?: MessageUsage | null
-  /**
-   * work：当前 role 对话下的工作会话列表 + 正在跑的实时输出。
-   * 面板据此画 WorkMenu 入口与内嵌 work 窗口；work 消息默认收起，不再单独开二级页。
-   */
+  /** 当前 role 对话下的工作会话列表 + 正在跑的实时输出。 */
   work?: WorkView
   /**
-   * 旧 work 页签带来的初始展开 id：保留兼容，只用于把内嵌窗口定位到对应 work。
-   * 传 null 就是当前 role 对话本身，work 窗口按默认收起。
+   * 旧 work 页签带来的初始选中 id：保留兼容，只用于高亮右侧状态面板里的对应 work。
+   * 传 null 就是当前 role 对话本身，不继承上一段的选择。
    */
   viewWorkId?: string | null
   /** 终止某个 work 正在跑的这一轮（只停这一个 work，不动 role 的对话） */
@@ -236,9 +235,8 @@ export default function AgentPanel({
   const [bubblePreview, setBubblePreview] = useState<MessageImage | null>(null)
   /** role 视图分层：chat = 用户视角的对外消息；mind = 全量执行过程（工具、思考、work 通道） */
   const [viewMode, setViewMode] = useState<'chat' | 'mind'>('chat')
-  /** work 消息窗口：默认收起；展开后在原地看列表与选中 work 的消息 */
-  const [workWindowOpen, setWorkWindowOpen] = useState(false)
-  const [workWindowId, setWorkWindowId] = useState<string | null>(null)
+  /** 右侧状态面板里高亮 / 定位的 work；WorkMenu 点选时写入，不等于展开某个窗口 */
+  const [activeWorkId, setActiveWorkId] = useState<string | null>(null)
   /** 上下文压缩后的摘要展开着（消息列表里那块分界线上的「看摘要」） */
   const [summaryOpen, setSummaryOpen] = useState(false)
 
@@ -264,26 +262,19 @@ export default function AgentPanel({
   )
 
   /**
-   * 切换 role 会话 / 旧 work 页签时重置 work 窗口：
-   * - 旧 work 页签带着 viewWorkId 进来时，展开并定位到那只 work；
-   * - 普通 role 会话默认收起，不能把上一段对话的窗口状态带过来。
+   * 切换 role 会话 / 旧 work 页签时更新右侧面板的选中 work：
+   * 旧 work 页签带着 viewWorkId 进来时高亮对应 work；普通 role 会话不继承上一段的选中。
    */
   useEffect(() => {
-    if (viewWorkId) {
-      setWorkWindowOpen(true)
-      setWorkWindowId(viewWorkId)
-      return
-    }
-    setWorkWindowOpen(false)
-    setWorkWindowId(null)
+    setActiveWorkId(viewWorkId ?? null)
   }, [conversation?.id, viewWorkId])
 
-  // work 被删 / 换了一段会话后，选中 id 不能在窗口里悬空。
+  // work 被删 / 换了一段会话后，选中的 id 不能在右侧面板里悬空。
   useEffect(() => {
-    if (!workWindowId) return
-    if (work?.sessions.some((w) => w.id === workWindowId)) return
-    setWorkWindowId(work?.sessions[0]?.id ?? null)
-  }, [work, workWindowId])
+    if (!activeWorkId) return
+    if (work?.sessions.some((w) => w.id === activeWorkId)) return
+    setActiveWorkId(work?.sessions[0]?.id ?? null)
+  }, [work, activeWorkId])
 
   /**
    * 这个对话里所有回复的 token 账，圆环与浮层据此汇总。
@@ -311,10 +302,56 @@ export default function AgentPanel({
     return i < 0 ? messages.length : i
   }, [messages])
 
-  /* ---------- 定位条、滚动跟随与字号 ---------- */
+  /** work 消息只做 mind 时间线展示：按会话消息原样取，绝不写回 role 的 messages。 */
+  const workMessages = useMemo<WorkTimelineMessage[]>(() => {
+    const rows: WorkTimelineMessage[] = (work?.sessions ?? []).flatMap((session) =>
+      session.messages
+        .filter((m) => !m.hidden)
+        .map((m) => ({ m, work: { id: session.id, name: session.name } })),
+    )
+    // 正在跑的 work 还没有落库的增量输出：挂在时间线末尾，仍用同一条 work 标识。
+    for (const live of work?.live ?? []) {
+      const session = work?.sessions.find((item) => item.id === live.workId)
+      if (!session || !live.parts.length) continue
+      rows.push({
+        m: {
+          id: `live:${live.workId}:${live.runId}`,
+          role: 'assistant',
+          ts: Number.MAX_SAFE_INTEGER,
+          parts: live.parts,
+        },
+        work: { id: session.id, name: session.name },
+      })
+    }
+    return rows
+  }, [work])
 
+  /* ---------- 定位条、滚动跟随与字号 ---------- */
   /** 整块面板：Ctrl + 滚轮的区域就是它（表头、列表、输入区都算，划过哪里都生效） */
   const rootRef = useRef<HTMLDivElement | null>(null)
+  /** 智能体页面宽度：右侧状态面板只在 >= 1400 的宽页出现；窄页把整列让给消息 */
+  const [panelWidth, setPanelWidth] = useState(0)
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    // 阈值按整块智能体页面算；不在 AgentSlot 里的调用方退回面板自身宽度。
+    const page = el.closest('[data-agent-slot]')
+    const target = page instanceof HTMLElement ? page : el
+    const sync = (w: number) => {
+      if (Number.isFinite(w) && w > 0) {
+        setPanelWidth((prev) => (prev === Math.round(w) ? prev : Math.round(w)))
+      }
+    }
+    sync(target.clientWidth)
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width
+      if (typeof w === 'number') sync(w)
+    })
+    ro.observe(target)
+    return () => ro.disconnect()
+  }, [])
+  const showInspector = mindInspectorVisible(viewMode, panelWidth)
   /** 滚动容器：列表、定位条、缩放共用它的实时几何 */
   const scrollRef = useRef<HTMLDivElement | null>(null)
   /**
@@ -380,7 +417,7 @@ export default function AgentPanel({
    */
   useEffect(() => {
     stickToBottom()
-  }, [stickToBottom, messages, streaming, running])
+  }, [stickToBottom, messages, streaming, running, workMessages])
 
   // 定位条排在后面：它的 useLayoutEffect 与上面那个「贴底」谁先跑与拆分前一致（见各自注释）
   const { anchors, measureAnchors } = useMsgRail(
@@ -491,34 +528,10 @@ export default function AgentPanel({
     [composer],
   )
 
-  /** 点 work 列表 / 输入区入口：只展开内嵌窗口，不再新开 work 二级页。 */
+  /** 点 work 列表 / 输入区入口：只选中右侧面板里的 work（消息已在时间线里） */
   const openWork = useCallback((workId: string) => {
-    setWorkWindowId(workId)
-    setWorkWindowOpen(true)
+    setActiveWorkId(workId)
   }, [])
-  const toggleWorkWindow = () => {
-    const next = !workWindowOpen
-    if (next && !workWindowId) setWorkWindowId(work?.sessions[0]?.id ?? null)
-    setWorkWindowOpen(next)
-  }
-
-  const workWindowNode =
-    work && work.sessions.length ? (
-      <InlineWorkWindow
-        works={work.sessions}
-        live={work.live}
-        open={workWindowOpen}
-        activeWorkId={workWindowId}
-        onToggle={toggleWorkWindow}
-        onSelectWork={openWork}
-        onStopWork={onStopWork}
-        onStopWorkWithStatement={onStopWorkWithStatement}
-        onDeleteWork={onDeleteWork}
-        onOpenFile={onOpenFile}
-        setBubblePreview={setBubblePreview}
-        goalId={conversation?.goalId}
-      />
-    ) : null
 
   // 消息列表那一段 JSX：状态与回调都在上面，这里只负责把它渲染出来
   const messageList = useMessageList({
@@ -543,9 +556,7 @@ export default function AgentPanel({
     mind: viewMode === 'mind',
     agentName: emptyName ?? '',
     agentAvatarId,
-    usages,
-    workWindow: workWindowNode,
-    contextSubject: emptyName ?? undefined,
+    workMessages,
     resetKey: conversation?.id ?? '',
   })
 
@@ -568,16 +579,15 @@ export default function AgentPanel({
             {m === 'chat' ? t('对话') : t('思维')}
           </button>
         ))}
-        {/* work 窗口默认收起；入口在输入区，不在这里抢注意力 */}
+        {/* work 的入口在输入区；消息已经按时间戳并入思维时间线，这里不再占一条壳 */}
       </div>
       {/*
-        消息区不再限制整栏宽度：对话列表铺满可用空间，只有单条气泡限制 450px，
-        这样长屏上不会出现一大片空白的「居中窄栏」，一行也不会被拉得读不动。
-        顶栏（超级导师 + 人格 + 「正在辅导」）随 agent 栏页签化撤掉：页签自己就回答着
-        「现在跟谁在说」——目标级页签的标题就是目标的标题，子代理页签就是会话名。
-        「正在辅导」与对话标题搬到了输入框下面的状态行（见下面那一行）。
+        消息区不再限制整栏宽度：对话列表铺满可用空间，只有用户自己的单条气泡限制 450px；
+        mind 的外部消息与 work 消息铺满整行。顶栏（超级导师 + 人格 + 「正在辅导」）随 agent
+        栏页签化撤掉：页签自己就回答着「现在跟谁在说」。
       */}
-      <div className="relative min-h-0 w-full flex-1">
+      <div className="flex min-h-0 w-full flex-1">
+        <div className="relative min-w-0 flex-1">
         {/* moji-selectable：聊天列表是全站仅有的两处「可选文字、可拖拽」的区域之一
             （另一处是左侧文档浏览区），见 index.css 的只读界面规则 */}
         {/*
@@ -603,8 +613,6 @@ export default function AgentPanel({
             <div
               ref={contentRef}
               className={`w-full px-4 pt-5 ${
-                viewMode === 'mind' ? 'max-w-[800px]' : ''
-              } ${
                 messages.length === 0 && !streaming
                   ? 'flex min-h-[calc(100%-1.25rem)] flex-col justify-center pb-8'
                   : ''
@@ -651,6 +659,20 @@ export default function AgentPanel({
         </div>
 
         {!pinned && <FollowLatestButton onClick={restoreFollow} unread={unread} className="bottom-3 right-8" />}
+        </div>
+
+        {showInspector && (
+          <MindInspector
+            usages={usages}
+            subject={emptyName ?? undefined}
+            works={work?.sessions ?? []}
+            activeWorkId={activeWorkId}
+            onOpenWork={openWork}
+            onStopWork={onStopWork}
+            onStopWorkWithStatement={onStopWorkWithStatement}
+            onDeleteWork={onDeleteWork}
+          />
+        )}
       </div>
 
       {/* 输入区与列表之间不画分隔线：输入卡片自己那圈边框已经把它分出来了，多一条线只是噪音 */}

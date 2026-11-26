@@ -81,47 +81,67 @@ function render(props: Partial<MessageListProps>) {
   }
 }
 
-describe('mind 上下文账与 work 观察列表', () => {
-  it('顶部显示当前上下文占用与累计消耗', () => {
-    const r = render({ messages: [workMessage], mind: true, usages: [usage], agentName: '导师龟' })
-    const summary = r.host.querySelector('[data-mind-context-summary]')
-    expect(summary).not.toBeNull()
-    expect(summary?.textContent).toContain('上下文占用')
-    expect(summary?.textContent).toContain('15%')
-    expect(summary?.textContent).toContain('累计输入 1.3k')
-    expect(summary?.textContent).toContain('输出 100')
+describe('mind 上下文账与 work 消息内联', () => {
+  it('mind 列表顶部不再画上下文统计（统计搬到右侧固定面板）', () => {
+    const r = render({ messages: [workMessage], mind: true, agentName: '导师龟' })
+    expect(r.host.querySelector('[data-mind-context-summary]')).toBeNull()
     r.cleanup()
   })
 
-  it('work 内嵌窗口固定挂在对话列表最下方；与最新一条消息是否派发 work 无关', () => {
-    const workWindow = createElement('div', { 'data-work-window-stub': 'true' }, '工作窗口')
-    const r = render({
-      messages: [workMessage],
-      mind: true,
-      usages: [usage],
-      agentName: '导师龟',
-      workWindow,
-    })
-    const window = r.host.querySelector('[data-work-window-stub]')
-    expect(window).not.toBeNull()
-    expect(window?.textContent).toContain('工作窗口')
-
-    const plain: ConversationMessage = {
-      id: 'a2',
-      role: 'assistant',
-      ts: 1_700_000_000_000,
-      parts: [{ type: 'text', text: '没有派 work。' }],
+  it('work 消息按时间戳并入 role 消息之间，并带 work 标识，不再有独立窗口', () => {
+    const before: ConversationMessage = {
+      id: 'r1',
+      role: 'user',
+      ts: 100,
+      parts: [{ type: 'text', text: '先派活' }],
     }
+    const after: ConversationMessage = {
+      id: 'r2',
+      role: 'assistant',
+      ts: 300,
+      parts: [{ type: 'text', text: '收到交付' }],
+    }
+    const workItem = {
+      m: {
+        id: 'wm1',
+        role: 'assistant' as const,
+        ts: 200,
+        parts: [{ type: 'text', text: '调研中间结果' }],
+      } satisfies ConversationMessage,
+      work: { id: 'w1', name: '调研-1' },
+    }
+    const r = render({
+      messages: [before, after],
+      mind: true,
+      agentName: '导师龟',
+      workMessages: [workItem],
+    })
+    const ids = Array.from(r.host.querySelectorAll('[data-mind-message-id]')).map((el) =>
+      el.getAttribute('data-mind-message-id'),
+    )
+    expect(ids).toEqual(['r1', 'wm1', 'r2'])
+    const workRow = r.host.querySelector('[data-work-message="w1"]')
+    expect(workRow).not.toBeNull()
+    expect(workRow?.textContent).toContain('work ·')
+    expect(workRow?.textContent).toContain('调研-1')
+    expect(workRow?.textContent).toContain('调研中间结果')
+    expect(r.host.querySelector('[data-inline-work-window]')).toBeNull()
+    expect(r.host.querySelector('[data-work-dispatch-list]')).toBeNull()
     r.cleanup()
-    const r2 = render({ messages: [plain], mind: true, workWindow })
-    expect(r2.host.querySelector('[data-work-window-stub]')).not.toBeNull()
-    r2.cleanup()
   })
 
-  it('chat 层不渲染 mind 的 work 窗口', () => {
-    const workWindow = createElement('div', { 'data-work-window-stub': 'true' }, '工作窗口')
-    const r = render({ messages: [workMessage], mind: false, workWindow })
-    expect(r.host.querySelector('[data-work-window-stub]')).toBeNull()
+  it('chat 层不渲染 work 时间线消息', () => {
+    const workItem = {
+      m: {
+        id: 'wm1',
+        role: 'assistant' as const,
+        ts: 200,
+        parts: [{ type: 'text', text: '调研中间结果' }],
+      } satisfies ConversationMessage,
+      work: { id: 'w1', name: '调研-1' },
+    }
+    const r = render({ messages: [workMessage], mind: false, workMessages: [workItem] })
+    expect(r.host.querySelector('[data-work-message]')).toBeNull()
     r.cleanup()
   })
 

@@ -18,9 +18,8 @@ import WaveBars from '../../WaveBars'
 import { CompactionDivider } from './CompactionDivider'
 import { HiddenDivider, MessageRow, Parts } from './MessageBubble'
 import { MindMessageRow } from './MindMessageRow'
-import { MindContextSummary } from './MindContextSummary'
 import { useRecentWindow } from './useRecentWindow'
-import type { MessageListProps } from './MessageList'
+import type { MessageListProps, WorkTimelineMessage } from './MessageList'
 import type { InjectItem } from './partGroups'
 import type { ConversationMessage } from '../../../agent/types'
 import { isPromptInject } from '../../../agent/messageKind'
@@ -43,6 +42,11 @@ import { t } from '../../../i18n'
 type Segment =
   | { kind: 'marks'; msgs: ConversationMessage[]; start: number }
   | { kind: 'row'; m: ConversationMessage; at: number; prelude?: InjectItem[] }
+
+/** 思维列表的展示顺序：role 的分段与 work 消息按时间戳混排，后者不参与上下文 */
+type TimelineItem =
+  | { kind: 'segment'; key: string; ts: number; seq: number; seg: Segment }
+  | { kind: 'work'; key: string; ts: number; seq: number; item: WorkTimelineMessage }
 
 /** 隐藏消息 → 过程组里那一条（标签取 mark，正文取它进上下文的原文） */
 function toInjectItem(m: ConversationMessage): InjectItem {
@@ -140,9 +144,7 @@ export function useMessageList({
   emptyName,
   mind = false,
   agentName = '',
-  usages = [],
-  workWindow,
-  contextSubject,
+  workMessages = [],
   resetKey = '',
 }: MessageListProps) {
   /*
@@ -158,6 +160,30 @@ export function useMessageList({
    * 不会因为每个 chunk 重渲染一次而被打掉。
    */
   const { segments, pending } = useMemo(() => toSegments(visibleMessages), [visibleMessages])
+  /** work 消息只做展示：过滤隐藏项，按时间戳插进 role 消息之间，绝不写回 messages。 */
+  const workRows = useMemo(
+    () => (mind ? workMessages.filter(({ m }) => !m.hidden) : []),
+    [mind, workMessages],
+  )
+  const timeline = useMemo(() => {
+    const items: TimelineItem[] = segments.map((seg, index) => ({
+      kind: 'segment',
+      key: seg.kind === 'marks' ? 'marks:' + seg.msgs[0].id : 'row:' + seg.m.id,
+      ts: (seg.kind === 'marks' ? seg.msgs[0]?.ts : seg.m.ts) ?? 0,
+      seq: index,
+      seg,
+    }))
+    workRows.forEach((item, index) => {
+      items.push({
+        kind: 'work',
+        key: 'work:' + item.work.id + ':' + item.m.id,
+        ts: item.m.ts ?? 0,
+        seq: segments.length + index,
+        item,
+      })
+    })
+    return items.sort((a, b) => a.ts - b.ts || a.seq - b.seq)
+  }, [segments, workRows])
   /**
    * 空态随 role：copy 表按 emptyVoice 取（缺省 = 导师口径，老调用方零改动）；
    * 建议只有可交流 role 才有（工作流驱动的 role 输入区是锁着的，建议点不了）。
@@ -213,14 +239,31 @@ export function useMessageList({
       ) : null}
       <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
 
-      {mind && <MindContextSummary usages={usages} subject={contextSubject} />}
-
       {/* 摘要卡永远在最上面：压缩之后它就是第一条消息（旧消息全部失活、只作显示） */}
       {summary && (
         <CompactionDivider summary={summary} open={summaryOpen} onToggle={() => setSummaryOpen((v) => !v)} />
       )}
 
-      {segments.map((seg) => {
+      {timeline.map((item) => {
+        if (item.kind === 'work') {
+          return (
+            <MindMessageRow
+              key={item.key}
+              m={item.item.m}
+              agentName={agentName}
+              faded={false}
+              flash={flashId === item.item.m.id}
+              msgRefs={msgRefs}
+              onResumeNotice={onResumeNotice}
+              setBubblePreview={setBubblePreview}
+              onOpenFile={onOpenFile}
+              goalId={goalId}
+              work={item.item.work}
+            />
+          )
+        }
+
+        const seg = item.seg
         /*
          * 一条消息一行，行自己 memo 过（见 MessageBubble 的 MessageRow）：
          * 能变的东西（消息本体、是否失活、是否在闪、是否待确认删除、正在编辑的文本、
@@ -230,7 +273,7 @@ export function useMessageList({
         if (seg.kind === 'marks') {
           return (
             <HiddenDivider
-              key={seg.msgs[0].id}
+              key={item.key}
               msgs={seg.msgs}
               faded={seg.start < adjustedSummaryStart}
               flash={seg.msgs.some((m) => m.id === flashId)}
@@ -251,9 +294,9 @@ export function useMessageList({
           goalId,
         }
         return mind ? (
-          <MindMessageRow key={m.id} {...rowProps} agentName={agentName} />
+          <MindMessageRow key={item.key} {...rowProps} agentName={agentName} />
         ) : (
-          <MessageRow key={m.id} {...rowProps} />
+          <MessageRow key={item.key} {...rowProps} />
         )
       })}
 
@@ -290,9 +333,6 @@ export function useMessageList({
             <span className="moji-sheen">{loopLabel}</span>
           </div>
         )}
-
-      {/* work 消息窗口固定挂在列表最下方；默认收起，展开后原地查看 work 消息。 */}
-      {mind && workWindow}
     </>
   )
 }

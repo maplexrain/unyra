@@ -24,10 +24,13 @@ function ratioColor(ratio: number): string {
 export function MindContextSummary({
   usages,
   subject,
+  embedded = false,
 }: {
   usages: MessageUsage[]
   /** 这段账属于谁：role 名 / work 名；只用于标题，不改变计算 */
   subject?: string
+  /** 嵌在右侧状态面板里：不吸顶、不画边框/圆角/投影，只承担内容 */
+  embedded?: boolean
 }) {
   useLocale()
   const totals = useMemo(() => totalUsage(usages), [usages])
@@ -38,7 +41,11 @@ export function MindContextSummary({
   return (
     <div
       data-mind-context-summary
-      className="sticky top-0 z-20 mb-3 rounded-xl border border-line/80 bg-card/95 px-3 py-2 shadow-[0_1px_0_rgba(31,27,23,0.04)] backdrop-blur-sm"
+      className={
+        embedded
+          ? 'bg-transparent px-0 py-0'
+          : 'sticky top-0 z-20 mb-3 rounded-xl border border-line/80 bg-card/95 px-3 py-2 shadow-[0_1px_0_rgba(31,27,23,0.04)] backdrop-blur-sm'
+      }
       title={
         subject
           ? t('{0} 的上下文账：当前占用取最近一跳，累计消耗按每次请求的输入量加总', subject)

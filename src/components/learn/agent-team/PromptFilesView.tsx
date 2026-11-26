@@ -19,7 +19,7 @@ import {
   subscribePromptFiles,
   type PromptFileScope,
 } from '../../../agent/promptFileStore'
-import { listPromptFiles, type PromptFileItem } from '../../../learn/ai/promptFiles'
+import { buildPromptFileSystem, listPromptFiles, type PromptFileItem } from '../../../learn/ai/promptFiles'
 import { t } from '../../../i18n'
 
 function withLayerOrder(
@@ -80,6 +80,7 @@ export function PromptFilesView({
   const files = listPromptFiles(agentId, layer, settings)
   const disabled = settings.disabled?.[agentId]?.[layer] ?? []
   const selectedIds = new Set(files.map((file) => file.id))
+  const preview = buildPromptFileSystem(agentId, layer, settings)
   const available = external.filter(
     (file) =>
       (file.scope === 'common' || file.agentId === agentId) &&
@@ -391,6 +392,24 @@ export function PromptFilesView({
           </li>
         ))}
       </ul>
+
+      {/* 列表下方是运行时真正拼出来的整份提示词：顺序、启停与空行都和下一轮注入一致。 */}
+      <div
+        data-prompt-preview
+        aria-label={t('拼接后的提示词预览')}
+        className="mt-3 rounded-lg border border-line/70 bg-paper-deep/30 px-2.5 py-2"
+      >
+        <div className="flex min-w-0 items-center gap-1.5">
+          <FileText size={12} className="shrink-0 text-seal/75" />
+          <span className="text-[11.5px] font-medium text-ink-strong">{t('拼接后的提示词预览')}</span>
+          <span className="ml-auto shrink-0 text-[10.5px] tabular-nums text-ink-faint">
+            {t('{0} 字符', preview.trim().length)}
+          </span>
+        </div>
+        <pre className="mt-2 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-paper px-3 py-2.5 font-mono text-[11px] leading-relaxed text-ink-soft">
+          {preview.trim() ? preview : t('这一层还没有启用的提示词文件。')}
+        </pre>
+      </div>
     </div>
   )
 }
