@@ -141,12 +141,11 @@ export interface ChannelMessage {
   direction: 'in' | 'out'
   from: ChannelPeer
   to: ChannelPeer
-  text: string
   /**
-   * 外层汇报之外的详细版：`text` 保持口语、简短；这里放依据、清单、过程与下一步。
-   * 聊天层默认只显示 `text`，用户或接收方可以展开查看详细版。
+   * 消息正文。单独一行 `---` 可分隔简短 / 详细：分隔线前是口语化短汇报，
+   * 后面是详细改动、索引名、标识符与专业说明；聊天层默认只显示短汇报。
    */
-  detail?: string
+  text: string
   ts: number
   attachments?: { images?: MessageImage[]; files?: MessageFile[] }
   /** 正文之外的额外数据（可折叠）；Agent 之间的大段结果优先放这里 */

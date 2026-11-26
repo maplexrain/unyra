@@ -24,6 +24,7 @@ import type { WorkManager } from '../../agent/work/manager'
 import { createChatOps } from '../ops/chat'
 import { resolveChatAttachments } from '../roleWork/attachments'
 import { agentNameOf, AGENT_ROLE_IDS, DEFAULT_AGENT_NAME, type AgentProfileId } from '../../agent/agentProfile'
+import { listRegisteredAgents } from '../../agent/agentListing'
 import { isAgentRoleId } from '../../agent/roleWork/types'
 import type { ChannelAskStatus, ChannelMessage, ChannelStamp, ConversationMessage } from '../../agent/types'
 import { ensureRoleConversation, roleConversationsOfGoal } from '../roleWork/roles'
@@ -210,6 +211,8 @@ export function rigTurnTools(io: {
       Promise.resolve({ ok: false, content: '当前宿主没有接上 work 的 ask 通道。' }),
   })
   sandboxBase.work = workManager.api
+  // role 共用名录：只读；workSandboxBase 已在上方拍过快照，因此 work 不会拿到这一组
+  sandboxBase.agent = { list: () => listRegisteredAgents(agentSettings) }
   const roleName = agentNameOf(profileOf(agentSettings, voice as AgentProfileId), voice as AgentProfileId)
   const appendChannel = (convId: string, envelope: ChannelMessage): void => {
     const cur = getLatest().conversations.find((c) => c.id === convId)
@@ -276,7 +279,7 @@ export function rigTurnTools(io: {
       })
       return { ok: r.ok, channel: 'work', to: name, ...(r.error ? { error: r.error } : {}) }
     },
-    sendToGroup: async ({ text, detail, mentions, mention, messageId, attachments, extra, delivery, silent }) => {
+    sendToGroup: async ({ text, mentions, mention, messageId, attachments, extra, delivery, silent }) => {
       const goalId = target.goalId
       if (!goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
       const mentionRoles: MentionRole[] = AGENT_ROLE_IDS.filter((id) => id !== 'free').map((id) => ({
@@ -371,7 +374,6 @@ export function rigTurnTools(io: {
         to: groupPeer(),
         id: groupMsgId,
         text,
-        ...(detail ? { detail } : {}),
         ...(messageId ? { quoteMessageId: messageId } : {}),
         ...(attachments ? { attachments } : {}),
         ...(mentionPeers.length ? { mentions: mentionPeers } : {}),
@@ -397,7 +399,6 @@ export function rigTurnTools(io: {
           text,
           id: groupMsg.id,
           ts: groupMsg.ts,
-          ...(detail ? { detail } : {}),
           ...(attachments ? { attachments } : {}),
           ...(extra ? { extra } : {}),
           ...(delivery ? { delivery } : {}),

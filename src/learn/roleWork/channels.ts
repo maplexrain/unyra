@@ -238,8 +238,6 @@ export function outboundEnvelope(input: {
   from: ChannelPeer
   to: ChannelPeer
   text: string
-  /** 内层详细汇报；气泡默认显示 text，可展开查看 */
-  detail?: string
   /** 宿主指定 id（群聊评论串需要先知道根消息 id）；缺省随机 */
   id?: string
   ts?: number
@@ -266,7 +264,6 @@ export function outboundEnvelope(input: {
     from: input.from,
     to: input.to,
     text: input.text,
-    ...(input.detail ? { detail: input.detail } : {}),
     ts: input.ts ?? Date.now(),
     ...(input.attachments ? { attachments: input.attachments } : {}),
     ...(input.extra ? { extra: input.extra } : {}),
@@ -289,8 +286,6 @@ export function inboundEnvelope(input: {
   from: ChannelPeer
   to: ChannelPeer
   text: string
-  /** 内层详细汇报；气泡默认显示 text，可展开查看 */
-  detail?: string
   ts?: number
   id?: string
   attachments?: ChannelMessage['attachments']
@@ -299,6 +294,8 @@ export function inboundEnvelope(input: {
   mention?: ChannelPeer
   /** 交付账（work 交付经 role 转发到通道） */
   delivery?: ChannelMessage['delivery']
+  /** 系统自动产生（自动交付 / 异常上报），不是 role 或用户手写 */
+  auto?: boolean
   goalId?: string
   threadId?: string
   threadRootId?: string
@@ -313,13 +310,13 @@ export function inboundEnvelope(input: {
     from: input.from,
     to: input.to,
     text: input.text,
-    ...(input.detail ? { detail: input.detail } : {}),
     ts: input.ts ?? Date.now(),
     ...(input.attachments ? { attachments: input.attachments } : {}),
     ...(input.extra ? { extra: input.extra } : {}),
     ...(input.mentions?.length ? { mentions: input.mentions } : {}),
     ...(input.mention ? { mention: input.mention } : {}),
     ...(input.delivery ? { delivery: input.delivery } : {}),
+    ...(input.auto ? { auto: true } : {}),
     ...(input.goalId ? { goalId: input.goalId } : {}),
     ...(input.threadId ? { threadId: input.threadId } : {}),
     ...(input.threadRootId ? { threadRootId: input.threadRootId } : {}),

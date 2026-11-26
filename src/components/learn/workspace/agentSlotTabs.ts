@@ -7,11 +7,48 @@
 import { allStoredTabs, clampFixSideWidth } from '../../../learn/groups'
 import { promptFileAbsPath } from '../../../agent/promptFileStore'
 import { setSettingsSection } from '../../settings/section'
-import type { LearnStore, TabRef, DocView } from '../../../learn/types'
+import type { LearnStore, LearnTab, TabRef, DocView } from '../../../learn/types'
 import type { AgentProfileId } from '../../../agent/agentProfile'
 import type { PromptFileItem } from '../../../learn/ai/promptFiles'
 
 type OpenTab = (ref: TabRef, view?: DocView) => void
+
+interface ReturnToAgentPageArgs {
+  groupId: string
+  promptTabId: string
+  agentTabs: LearnTab[]
+  activeGoalId: string | null
+  activateTab: (tabId: string) => void
+  openTab: OpenTab
+  closeTab: (
+    groupId: string,
+    tabId: string,
+    mode: 'self',
+    opts?: { confirm?: boolean },
+  ) => void
+}
+
+/**
+ * 从内置提示词只读页返回：优先激活已开着的智能体页，没有就补开一枚；
+ * 然后直接关掉提示词页签（只读页没有草稿，不需要确认框）。
+ */
+export function returnToAgentPage({
+  groupId,
+  promptTabId,
+  agentTabs,
+  activeGoalId,
+  activateTab,
+  openTab,
+  closeTab,
+}: ReturnToAgentPageArgs): void {
+  const agentTab =
+    agentTabs.find(
+      (tab) => tab.ref.kind === 'agentTeam' && (tab.ref.goalId ?? null) === activeGoalId,
+    ) ?? agentTabs.find((tab) => tab.ref.kind === 'agentTeam')
+  if (agentTab) activateTab(agentTab.id)
+  else openTab({ kind: 'agentTeam' })
+  closeTab(groupId, promptTabId, 'self', { confirm: false })
+}
 
 /** 打开统一设置页的智能体分页（常规 / 智能体是同一枚页签的两页） */
 export function openAgentSettingsTab(openTab: OpenTab): void {
@@ -19,7 +56,7 @@ export function openAgentSettingsTab(openTab: OpenTab): void {
   openTab({ kind: 'settings' })
 }
 
-/** 打开一份提示词文件：内置走只读提示词页，外置走 prompts/ 下的本地 md 页签 */
+/** 打开一份提示词文件：内置走只读提示词页，外置走 prompts/ 下的本地 xml 页签 */
 export function openPromptFileTab(
   openTab: OpenTab,
   onToast: (text: string) => void,

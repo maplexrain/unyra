@@ -123,18 +123,19 @@ describe('模块消息', () => {
 describe('work 系统提示词（紧凑静态注入；role 不再背执行细节）', () => {
   const system = buildWorkSystem('tutor')
 
-  it('沙箱 API 速查由注册表生成：签名 + 用法边界在场，全量手册的旧标题不在', () => {
+  it('沙箱 API 速查由注册表生成：签名 + 一句话作用在场，全量手册的旧标题不在', () => {
     // 导师 work 的领域面：节点 / 日程 / 工作区都在
     expect(system).toContain('api.node — 节点宇宙')
     expect(system).toContain('api.schedule')
     expect(system).toContain('api.work')
-    expect(system).toContain('api.chat')
+    expect(system).toContain('api.host — 宿主交付')
+    expect(system).not.toContain('api.chat')
     expect(system).toContain('api.workspace')
     // 团队分工：联网与浏览器归调研员、判卷归命题官——这些组不在导师 work 的速查里
     expect(system).not.toContain('#### api.exam')
     expect(system).not.toContain('#### api.classroom')
     expect(system).not.toContain('#### api.browser')
-    // 具体签名与反直觉边界（trap）在场
+    // 具体签名在场（完整用法边界与 trap 走 __help，不首屏铺开）
     expect(system).toContain('node.list()')
     expect(system).toContain('node.get(uuid)')
     expect(system).toContain('workspace.write')
@@ -163,8 +164,11 @@ describe('work 系统提示词（紧凑静态注入；role 不再背执行细节
   })
 
   it('排版配方与语法指南在场（component 围栏与动态 api 版）', () => {
-    expect(system).toContain('文档排版与视觉呈现')
+    expect(system).toContain('排版层级与基础规范')
     expect(system).toContain('```component')
+    // 旧排版指南已整体替掉，不能再与新 content_layout 并存
+    expect(system).not.toContain('### 结构化教学排版组件')
+    expect(system).not.toContain('## 文档排版与视觉呈现')
     expect(system).toContain('api.design.component.list')
     expect(system).toContain('```plot')
     expect(system).toContain('```quote')
@@ -182,19 +186,18 @@ describe('work 系统提示词（紧凑静态注入；role 不再背执行细节
   it('每轮必用的核心纪律与原则完整在场', () => {
     expect(system).toContain('execute')
     expect(system).toContain('rexecute')
-    expect(system).toContain('写操作的失败不抛异常')
-    expect(system).toContain('应用数据一律走 api 组')
+    expect(system).toContain('写操作失败不抛异常')
+    expect(system).toContain('应用数据一律走速查列出的 api 组')
     expect(system).toContain('userInfo.get()')
     expect(system).toContain('按名直接调用')
     expect(system).toContain('需求解耦')
     expect(system).not.toContain('iwanna')
   })
 
-  it('api 手册全文只在紧凑速查一处出现（旧版的双重嵌入已退役）', () => {
-    // workspace.list 的用法说明全文只在速查里出现一次——旧版在手册与专项手册各一份
+  it('非固定组改为紧凑签名，不再内嵌完整 group usage', () => {
     const marker = '工作区是用户交付物的落点'
-    expect(system.indexOf(marker)).toBeGreaterThan(-1)
-    expect(system.indexOf(marker)).toBe(system.lastIndexOf(marker))
+    expect(system).not.toContain(marker)
+    expect(system).toContain('workspace.list')
   })
 
   it('所有内容生成声部（tutor / examiner / designer）共用排版指南与 component 语法', () => {
@@ -204,7 +207,7 @@ describe('work 系统提示词（紧凑静态注入；role 不再背执行细节
     for (const sys of [tutor, examiner, designer]) {
       expect(sys).toContain('```component')
       expect(sys).toContain('api.design.component.list')
-      expect(sys).toContain('文档排版与视觉呈现')
+      expect(sys).toContain('排版层级与基础规范')
     }
   })
 })

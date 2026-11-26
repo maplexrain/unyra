@@ -2,7 +2,7 @@
  * 提示词文件的持久化描述。
  *
  * - 内置文件是编译进代码的系统提示词分段（role / work 两层各一组），只读；
- * - 外置文件是 `users/{uid}/prompts/*.md` 里的共用文件（见 agent/promptFileStore），
+ * - 外置文件是 `users/{uid}/prompts/*.xml` 里的共用文件（兼容旧 .md，见 agent/promptFileStore），
  *   内容住在磁盘上，不在这份设置里；
  * - 每个 agent、每一层各有一份顺序表：顺序就是注入顺序。`disabled` 里的 id 不注入。
  *

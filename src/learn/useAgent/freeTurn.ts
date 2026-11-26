@@ -17,6 +17,7 @@ import { createExecuteTools } from '../../agent/tools'
 import type { SandboxOptions } from '../../agent/sandbox/types'
 import { loadAgentSettings } from '../../agent/settings'
 import { FREE_AGENT_GROUPS, FREE_AGENT_TOP_LEVEL, profileOf, resolveAgentGlobal } from '../../agent/agentProfile'
+import { listRegisteredAgents } from '../../agent/agentListing'
 import { globalContextWindow, loadAiSettings } from '../../ai/settings'
 import { applyEvent } from '../agent/events'
 import { toChatHistory } from '../agent/history'
@@ -274,13 +275,15 @@ export async function runFreeTurn(io: {
     // role 层单会话：联网 / 日程不在 role 面，调用会被 apiAllow 拒绝；这里连实现都不注入
     web: undefined,
     schedule: undefined,
-    // role 的固定面：tmp / work / chat + compact
+    // role 的固定面：tmp / work / chat / agent + compact
     apiAllow: [...FREE_AGENT_GROUPS, ...FREE_AGENT_TOP_LEVEL],
     apiBrief:
       'api.work.list() / api.work.create({ name? }) / api.work.status(name)：管理自己的 work；\n' +
       'api.work.send({ name, text })：把任务交给 work，调用立即返回；\n' +
+      'api.agent.list()：查看已注册 agent 的 id / 名称 / 简介；\n' +
       'api.chat.send({ channel: \'user\'|\'agent\'|\'work\', to?, text })：对外发消息。\n' +
       '联网检索、网页抓取、日程读写都只在 work 面：需要就 create/send 一个 work。',
+    agent: { list: () => listRegisteredAgents(loadAgentSettings()) },
     signal: ctrl.signal,
   }
   if (workManager) {

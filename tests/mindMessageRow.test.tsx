@@ -95,6 +95,171 @@ describe('MindMessageRow', () => {
     host.remove()
   })
 
+  it('外部 agent 消息铺满整行、去掉边框圆角，超过 400px 可展开/收起', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const longText = Array.from({ length: 40 }, (_, i) => `第 ${i + 1} 行正文`).join('\n')
+    const msg: ConversationMessage = {
+      id: 'm4',
+      role: 'user',
+      ts: 1_700_000_000_000,
+      parts: [{ type: 'text', text: longText }],
+      channel: {
+        channel: 'agent',
+        from: { kind: 'role', id: 'researcher', name: '调研龟' },
+        to: { kind: 'role', id: 'tutor', name: '导师龟' },
+        ts: 1_700_000_000_000,
+        envelopeId: 'e4',
+      },
+    }
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight')
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 900,
+    })
+    act(() => {
+      root.render(
+        createElement(MindMessageRow, {
+          m: msg,
+          agentName: '导师龟',
+          faded: false,
+          flash: false,
+          setBubblePreview: vi.fn(),
+        }),
+      )
+    })
+    const row = host.querySelector('[data-mind-message-id="m4"]')
+    expect(row?.getAttribute('data-mind-collapsible')).toBe('true')
+    expect(row?.getAttribute('data-mind-expanded')).toBe('false')
+    expect(row?.className).not.toContain('rounded-lg')
+    expect(row?.className).not.toContain('border')
+    expect(row?.querySelector('.max-h-\\[400px\\]')).not.toBeNull()
+    expect(row?.querySelector('.flex-1')).not.toBeNull()
+    const toggle = Array.from(row?.querySelectorAll('button') ?? []).find((b) =>
+      b.textContent?.includes('展开全文'),
+    )
+    expect(toggle).not.toBeUndefined()
+    act(() => {
+      toggle?.click()
+    })
+    expect(row?.getAttribute('data-mind-expanded')).toBe('true')
+    expect(row?.querySelector('.max-h-\\[400px\\]')).toBeNull()
+    expect(row?.textContent).toContain('收起')
+    if (original) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', original)
+    else delete (HTMLElement.prototype as any).scrollHeight
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('同一条消息的思考 / 工具 / 正文拆成同等级的行，只有首行重复发信人抬头', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const msg: ConversationMessage = {
+      id: 'm5',
+      role: 'assistant',
+      ts: 1_700_000_000_000,
+      parts: [
+        { type: 'thinking', text: '先读一下资料' },
+        {
+          type: 'tool',
+          id: 't5',
+          name: 'execute',
+          args: JSON.stringify({ description: '读资料', body: 'await api.node.list()' }),
+          result: 'ok',
+          ok: true,
+          status: 'done',
+        },
+        { type: 'text', text: '资料读完了。' },
+      ],
+    }
+    act(() => {
+      root.render(
+        createElement(MindMessageRow, {
+          m: msg,
+          agentName: '导师龟',
+          faded: false,
+          flash: false,
+          setBubblePreview: vi.fn(),
+        }),
+      )
+    })
+
+    const units = [...host.querySelectorAll<HTMLElement>('[data-mind-unit-id]')]
+    expect(units).toHaveLength(3)
+    expect(units.map((row) => row.getAttribute('data-mind-part-type'))).toEqual([
+      'thinking',
+      'tool',
+      'text',
+    ])
+    // 一条消息只有一个抬头，后面两步不再重复「导师龟 00:00」
+    expect(host.querySelectorAll('[data-mind-channel]')).toHaveLength(1)
+    expect(host.querySelectorAll('[data-mind-message-id="m5"]')).toHaveLength(1)
+    for (const row of units) {
+      expect(row.className).not.toContain('rounded-lg')
+      expect(row.className).not.toContain('border')
+    }
+    expect(units[0].textContent).toContain('思考过程')
+    expect(units[1].textContent).toContain('读资料')
+    expect(units[2].textContent).toContain('资料读完了。')
+
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('work 消息同样拆成原子行，work 标识只出现在首行抬头', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const msg: ConversationMessage = {
+      id: 'wm5',
+      role: 'assistant',
+      ts: 1_700_000_000_000,
+      parts: [
+        { type: 'text', text: '先派发任务' },
+        {
+          type: 'tool',
+          id: 't6',
+          name: 'execute',
+          args: JSON.stringify({ description: '派发', body: 'await api.work.send({})' }),
+          result: 'ok',
+          ok: true,
+          status: 'done',
+        },
+      ],
+    }
+    act(() => {
+      root.render(
+        createElement(MindMessageRow, {
+          m: msg,
+          agentName: '调研龟',
+          faded: false,
+          flash: false,
+          work: { id: 'w1', name: 'medium-tools-article' },
+          setBubblePreview: vi.fn(),
+        }),
+      )
+    })
+
+    const units = [...host.querySelectorAll<HTMLElement>('[data-mind-unit-id]')]
+    expect(units).toHaveLength(2)
+    expect(units.every((row) => row.getAttribute('data-work-message') === 'w1')).toBe(true)
+    expect(units.every((row) => row.className.includes('bg-amber-500/10'))).toBe(true)
+    expect(units[0].textContent).toContain('Work')
+    expect(units[0].textContent).toContain('medium-tools-article')
+    expect(units[1].querySelector('[data-mind-channel]')).toBeNull()
+
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
   it('思考与工具直接平铺，不再先收进过程组容器', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)

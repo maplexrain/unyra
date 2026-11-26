@@ -107,14 +107,14 @@ describe('不进系统提示词（与人格同一条纪律）', () => {
 })
 
 describe('LaTeX 兼容性注意事项（用户要求：写在系统提示词里）', () => {
-  it('标准、最大程度兼容的核心子集声明在系统提示词里', () => {
+  it('标准、核心子集声明在系统提示词里', () => {
     const system = buildWorkSystem('tutor')
     expect(system).toContain('LaTeX 兼容性')
-    expect(system).toContain('最大程度兼容')
+    expect(system).toContain('仅用核心命令')
     // 不用 Unicode 字符近似数学（α、x²、√2 这类直接写 LaTeX）
     expect(system).toContain('Unicode')
     // 反斜杠转义要如实落到文本里（模板字符串里的 \\( 必须输出成 \(）
-    expect(system).toContain('不用 \\(…\\)')
+    expect(system).toContain('禁用 `\\(...\\)`')
     expect(system).toContain('\\usepackage')
   })
 })

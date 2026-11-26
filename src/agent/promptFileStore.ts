@@ -1,6 +1,7 @@
 /**
- * 外置提示词文件库：`users/{uid}/prompts/*.md`（共用）与
- * `users/{uid}/agents/{agent-id}/prompts/*.md`（agent 专属）是唯一事实来源。
+ * 外置提示词文件库：`users/{uid}/prompts/*.xml`（共用）与
+ * `users/{uid}/agents/{agent-id}/prompts/*.xml`（agent 专属）是唯一事实来源。
+ * 旧版 `.md` 仍会被扫描与编辑，新建文件统一落 `.xml`。
  *
  * 文件不等于「已加入当前 agent」：每个 agent 在各自的顺序表里显式选择要注入哪些文件。
  * 新建文件只落盘，不自动进入任何 agent 的提示词。
@@ -31,15 +32,15 @@ export type PromptFileScope = 'common' | 'agent'
 export interface StoredPromptFile {
   /** 稳定 id：共用 `ext:<fileName>`，专属 `agent:<agentId>:<fileName>` */
   id: string
-  /** 相对用户根目录的路径（含 .md） */
+  /** 相对用户根目录的路径（含 .xml / 兼容旧 .md） */
   relPath: string
   /** 文件所在目录 */
   scope: PromptFileScope
   /** 专属文件的归属 agent；共用为空 */
   agentId?: string
-  /** 所在 prompts/ 下的文件名（含 .md） */
+  /** 所在 prompts/ 下的文件名（含 .xml / 兼容旧 .md） */
   fileName: string
-  /** 列表里显示的名字：文件名去掉 .md */
+  /** 列表里显示的名字：文件名去掉 .xml / .md */
   name: string
   content: string
 }
@@ -74,11 +75,11 @@ export function promptFileAbsPath(file: { relPath: string } | string): string | 
 }
 
 function displayName(fileName: string): string {
-  return fileName.replace(/\.md$/i, '')
+  return fileName.replace(/\.(md|xml)$/i, '')
 }
 
 /**
- * 把用户输入的名字变成安全的 md 文件名。
+ * 把用户输入的名字变成安全的 xml 文件名。
  *
  * 只留一个基名（不允许目录分隔符），去掉 Windows 不允许的字符，压掉连续空白；
  * 空名回退成「提示词」，重名由 createPromptFile 追加序号。
@@ -86,13 +87,13 @@ function displayName(fileName: string): string {
 export function safePromptFileName(raw: string): string {
   const base = raw
     .trim()
-    .replace(/\.md$/i, '')
+    .replace(/\.(md|xml)$/i, '')
     .replace(/[\\/:*?"<>|]/g, '-')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^[-.]+|[-.]+$/g, '')
     .slice(0, 60)
-  return `${base || '提示词'}.md`
+  return `${base || '提示词'}.xml`
 }
 
 async function scanPromptDir(
@@ -101,13 +102,13 @@ async function scanPromptDir(
   agentId?: string,
 ): Promise<StoredPromptFile[]> {
   const entries = await listUserDir(dir)
-  const mdFiles = entries
-    .filter((entry) => !entry.dir && !entry.name.startsWith('.') && /\.md$/i.test(entry.name))
+  const promptFiles = entries
+    .filter((entry) => !entry.dir && !entry.name.startsWith('.') && /\.(md|xml)$/i.test(entry.name))
     .map((entry) => entry.name)
     .sort((a, b) => displayName(a).localeCompare(displayName(b), 'zh-Hans-CN'))
 
   return Promise.all(
-    mdFiles.map(async (fileName) => {
+    promptFiles.map(async (fileName) => {
       const relPath = `${dir}/${fileName}`
       const content = (await readUserText(relPath)) ?? ''
       return {
@@ -186,7 +187,7 @@ export async function createPromptFile(
   let fileName = baseName
   let seq = 2
   while (existing.has(fileName.toLowerCase())) {
-    fileName = `${baseName.replace(/\.md$/i, '')}-${seq}.md`
+    fileName = `${baseName.replace(/\.xml$/i, '')}-${seq}.xml`
     seq += 1
   }
 
@@ -207,12 +208,12 @@ export async function deletePromptFile(file: { relPath: string } | string): Prom
 
 // 文件由普通本地文件页签编辑保存：写成功即重新读回，保证下一轮提示词用的是新内容
 onUserTextWritten((rel) => {
-  if (!/\.md$/i.test(rel)) return
+  if (!/\.(md|xml)$/i.test(rel)) return
   if (rel.startsWith(`${PROMPT_FILES_DIR}/`)) {
     void refreshPromptFiles()
     return
   }
-  if (/^agents\/[^/]+\/prompts\/[^/]+\.md$/i.test(rel)) void refreshPromptFiles()
+  if (/^agents\/[^/]+\/prompts\/[^/]+\.(md|xml)$/i.test(rel)) void refreshPromptFiles()
 })
 
 // 同一个文件也可能被普通本地文件页签保存（local 通道写绝对路径），同样要重新读回
@@ -220,7 +221,7 @@ onLocalFileWritten((path) => {
   const roots = [userAbsPath(PROMPT_FILES_DIR), userAbsPath(AGENTS_DIR)].filter(
     (value): value is string => Boolean(value),
   )
-  if (!roots.length || !/\.md$/i.test(path)) return
+  if (!roots.length || !/\.(md|xml)$/i.test(path)) return
   const norm = (value: string) => value.replace(/\\/g, '/').toLowerCase().replace(/\/$/, '')
   if (!roots.some((root) => norm(path).startsWith(`${norm(root)}/`))) return
   void refreshPromptFiles()

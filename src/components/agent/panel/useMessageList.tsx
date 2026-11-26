@@ -18,9 +18,8 @@ import WaveBars from '../../WaveBars'
 import { CompactionDivider } from './CompactionDivider'
 import { HiddenDivider, MessageRow, Parts } from './MessageBubble'
 import { MindMessageRow } from './MindMessageRow'
-import { MindContextSummary } from './MindContextSummary'
 import { useRecentWindow } from './useRecentWindow'
-import type { MessageListProps } from './MessageList'
+import type { MessageListProps, WorkTimelineMessage } from './MessageList'
 import type { InjectItem } from './partGroups'
 import type { ConversationMessage } from '../../../agent/types'
 import { isPromptInject } from '../../../agent/messageKind'
@@ -44,7 +43,12 @@ type Segment =
   | { kind: 'marks'; msgs: ConversationMessage[]; start: number }
   | { kind: 'row'; m: ConversationMessage; at: number; prelude?: InjectItem[] }
 
-/** 隐藏消息 → 过程组里那一条（标签取 mark，正文取它进上下文的原文） */
+/** 思维列表的展示顺序：role 的分段与 work 消息按时间戳混排，后者不参与上下文 */
+type TimelineItem =
+  | { kind: 'segment'; key: string; ts: number; seq: number; seg: Segment }
+  | { kind: 'work'; key: string; ts: number; seq: number; item: WorkTimelineMessage }
+
+/** 隐藏消息 → 过程行里那一条（标签取 mark，正文取它进上下文的原文） */
 function toInjectItem(m: ConversationMessage): InjectItem {
   return {
     type: 'inject',
@@ -140,9 +144,7 @@ export function useMessageList({
   emptyName,
   mind = false,
   agentName = '',
-  usages = [],
-  workWindow,
-  contextSubject,
+  workMessages = [],
   resetKey = '',
 }: MessageListProps) {
   /*
@@ -158,6 +160,52 @@ export function useMessageList({
    * 不会因为每个 chunk 重渲染一次而被打掉。
    */
   const { segments, pending } = useMemo(() => toSegments(visibleMessages), [visibleMessages])
+  /** work 消息只做展示：过滤隐藏项，按时间戳插进 role 消息之间，绝不写回 messages。 */
+  const workRows = useMemo(
+    () => (mind ? workMessages.filter(({ m }) => !m.hidden) : []),
+    [mind, workMessages],
+  )
+  const timeline = useMemo(() => {
+    /*
+     * 同一条 work 的可见消息必须保持会话数组顺序：运行中补派的任务在发送时就带了 ts，
+     * 但它要等当前 assistant 到跳边界落库之后才进 work.messages，原始 ts 可能早于
+     * 上一条 assistant。给每条 work 消息算一个「不倒退」的排序时刻：组内按 order，
+     * 排序值取 max(原始 ts, 上一条排序值 + 1)。raw ts 仍然留在 data-mind-ts 上，
+     * 这里只改时间线位置，不改时间戳本身。
+     */
+    const workSortTs = new Map<WorkTimelineMessage, number>()
+    const byWork = new Map<string, WorkTimelineMessage[]>()
+    for (const item of workRows) {
+      const list = byWork.get(item.workId)
+      if (list) list.push(item)
+      else byWork.set(item.workId, [item])
+    }
+    for (const list of byWork.values()) {
+      list.sort((a, b) => a.order - b.order || a.ts - b.ts)
+      let cursor = Number.NEGATIVE_INFINITY
+      for (const item of list) {
+        cursor = Math.max(item.ts, cursor + 1)
+        workSortTs.set(item, cursor)
+      }
+    }
+    const items: TimelineItem[] = segments.map((seg, index) => ({
+      kind: 'segment',
+      key: seg.kind === 'marks' ? 'marks:' + seg.msgs[0].id : 'row:' + seg.m.id,
+      ts: (seg.kind === 'marks' ? seg.msgs[0]?.ts : seg.m.ts) ?? 0,
+      seq: index,
+      seg,
+    }))
+    workRows.forEach((item, index) => {
+      items.push({
+        kind: 'work',
+        key: 'work:' + item.workId + ':' + item.m.id,
+        ts: workSortTs.get(item) ?? item.ts,
+        seq: segments.length + index,
+        item,
+      })
+    })
+    return items.sort((a, b) => a.ts - b.ts || a.seq - b.seq)
+  }, [segments, workRows])
   /**
    * 空态随 role：copy 表按 emptyVoice 取（缺省 = 导师口径，老调用方零改动）；
    * 建议只有可交流 role 才有（工作流驱动的 role 输入区是锁着的，建议点不了）。
@@ -213,14 +261,31 @@ export function useMessageList({
       ) : null}
       <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
 
-      {mind && <MindContextSummary usages={usages} subject={contextSubject} />}
-
       {/* 摘要卡永远在最上面：压缩之后它就是第一条消息（旧消息全部失活、只作显示） */}
       {summary && (
         <CompactionDivider summary={summary} open={summaryOpen} onToggle={() => setSummaryOpen((v) => !v)} />
       )}
 
-      {segments.map((seg) => {
+      {timeline.map((item) => {
+        if (item.kind === 'work') {
+          return (
+            <MindMessageRow
+              key={item.key}
+              m={item.item.m}
+              agentName={agentName}
+              faded={false}
+              flash={flashId === item.item.m.id}
+              msgRefs={msgRefs}
+              onResumeNotice={onResumeNotice}
+              setBubblePreview={setBubblePreview}
+              onOpenFile={onOpenFile}
+              goalId={goalId}
+              work={{ id: item.item.workId, name: item.item.workName }}
+            />
+          )
+        }
+
+        const seg = item.seg
         /*
          * 一条消息一行，行自己 memo 过（见 MessageBubble 的 MessageRow）：
          * 能变的东西（消息本体、是否失活、是否在闪、是否待确认删除、正在编辑的文本、
@@ -230,7 +295,7 @@ export function useMessageList({
         if (seg.kind === 'marks') {
           return (
             <HiddenDivider
-              key={seg.msgs[0].id}
+              key={item.key}
               msgs={seg.msgs}
               faded={seg.start < adjustedSummaryStart}
               flash={seg.msgs.some((m) => m.id === flashId)}
@@ -251,21 +316,40 @@ export function useMessageList({
           goalId,
         }
         return mind ? (
-          <MindMessageRow key={m.id} {...rowProps} agentName={agentName} />
+          <MindMessageRow key={item.key} {...rowProps} agentName={agentName} />
         ) : (
-          <MessageRow key={m.id} {...rowProps} />
+          <MessageRow key={item.key} {...rowProps} />
         )
       })}
 
-      {streaming && streaming.length > 0 && (
-        <div className="mb-4">
-          {/*
-            还没落库的那一轮：攒下的提示词注入交给它——与落库之后并进回复是同一个位置，
-            用户不会在这一轮收口时看到那几行「跳」一下。
-          */}
-          <Parts parts={streaming} prelude={pending.length ? pending : undefined} streaming={true} />
-        </div>
-      )}
+      {streaming && streaming.length > 0 &&
+        (mind ? (
+          <MindMessageRow
+            m={{
+              id: 'live:role',
+              role: 'assistant',
+              ts: 0,
+              parts: streaming,
+            }}
+            hideTime
+            agentName={agentName}
+            faded={false}
+            flash={false}
+            setBubblePreview={setBubblePreview}
+            onOpenFile={onOpenFile}
+            goalId={goalId}
+            prelude={pending.length ? pending : undefined}
+            streaming
+          />
+        ) : (
+          <div className="mb-4">
+            {/*
+              还没落库的那一轮：攒下的提示词注入交给它——与落库之后并进回复是同一个位置，
+              用户不会在这一轮收口时看到那几行「跳」一下。
+            */}
+            <Parts parts={streaming} prelude={pending.length ? pending : undefined} streaming={true} />
+          </div>
+        ))}
 
       {/* 没有流式内容、也没有回复可挂的注入（极少见：用户刚发出、导师还没开口）：自己成一组 */}
       {pending.length > 0 && !(streaming && streaming.length > 0) && (
@@ -290,9 +374,6 @@ export function useMessageList({
             <span className="moji-sheen">{loopLabel}</span>
           </div>
         )}
-
-      {/* work 消息窗口固定挂在列表最下方；默认收起，展开后原地查看 work 消息。 */}
-      {mind && workWindow}
     </>
   )
 }

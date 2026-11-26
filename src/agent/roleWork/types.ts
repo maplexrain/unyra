@@ -79,12 +79,12 @@ export interface ChatSendInput {
    * 用户消息的首个 @ 由宿主自动解析成它。传 `to` 时按旧兼容视作 mention。
    */
   mention?: string
-  text: string
   /**
-   * 内层详细汇报：`text` 是对外的口语化短汇报，这里放完整依据 / 清单 / 过程。
-   * 群聊与私聊气泡默认显示 `text`，可展开到 `detail`；发给 work 时会并入任务正文。
+   * 对外正文。交付物完成通知可用单独一行 `---` 分隔：
+   * 分隔线前是一句话口语化短汇报，后面是详细改动 / 索引名 / 标识符 / 专业说明。
+   * 渲染层默认只显示分隔线前的内容，用户可切换查看详细段；普通对话不要用该分隔。
    */
-  detail?: string
+  text: string
   /** 引用当前 role 会话里的用户消息（转发并标注来源） */
   messageId?: string
   attachments?: ChatAttachmentInput[]

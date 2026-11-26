@@ -223,7 +223,7 @@ describe('agentWfGrant（工作流授权面：内置规程面按分工固定 + �
   it('运行时 apiAllow：role 只有固定面，领域能力全在 work', () => {
     for (const voice of AGENT_VOICES) {
       const allow = agentRuntimeApiAllow(voice)
-      expect(allow).toEqual(['tmp', 'work', 'chat', 'compact'])
+      expect(allow).toEqual(['tmp', 'work', 'chat', 'agent', 'compact'])
       expect(allow).not.toContain('core')
       expect(allow).not.toContain('node')
       expect(allow).not.toContain('exam')
@@ -277,7 +277,7 @@ describe('profiles 声部 id 契约', () => {
     }
     // 经理龟与所有 role 一样：只有沟通 + 调度固定面，活交给 work
     const dispatcher = agentRuntimeApiAllow('dispatcher')
-    expect(dispatcher).toEqual(['tmp', 'work', 'chat', 'compact'])
+    expect(dispatcher).toEqual(['tmp', 'work', 'chat', 'agent', 'compact'])
     expect(dispatcher).not.toContain('node')
     expect(dispatcher).not.toContain('web')
     expect(dispatcher).not.toContain('delivery')
@@ -292,9 +292,9 @@ describe('系统提示词：role 只说话与调度，work 才带领域规程', 
     const text = buildTeacherSystem()
     expect(text).toContain('你是「归一 Unyra」的导师龟')
     expect(text).toContain('api.chat.send')
-    expect(text).toContain("'examiner'")
-    expect(text).toContain("'designer'")
-    expect(text).toContain("'researcher'")
+    expect(text).toContain('examiner')
+    expect(text).toContain('designer')
+    expect(text).toContain('researcher')
     expect(text).toContain('api.work.create')
     expect(text).not.toContain('api.team.delegate')
     expect(text).not.toContain('【开讲】教学文档生成（teach-node）')
@@ -417,15 +417,15 @@ describe('系统提示词：role 只说话与调度，work 才带领域规程', 
     for (const text of prompts) {
       expect(text.startsWith(SHARED_AGENT_PREFIX)).toBe(true)
     }
-    // 共同前缀只装对四位声部逐字为真的块：团队协作 / execute 机制 / 先查再用 /
-    // 应用数据守门 / 沙箱纪律 / 通用纪律 / compact 规程
-    expect(SHARED_AGENT_PREFIX).toContain('## 同一个我：对外与执行')
-    expect(SHARED_AGENT_PREFIX).toContain('核心执行工具是 execute')
-    expect(SHARED_AGENT_PREFIX).toContain('**先查再用**')
-    expect(SHARED_AGENT_PREFIX).toContain('**应用数据一律走 api 组**')
-    expect(SHARED_AGENT_PREFIX).toContain('**调用形态与沙箱纪律**')
-    expect(SHARED_AGENT_PREFIX).toContain('约束与纪律：')
-    expect(SHARED_AGENT_PREFIX).toContain('【压缩上下文】长会话交接摘要（compact）')
+    // 共同前缀只装对六位声部逐字为真的块：执行机制 / 先查再用 /
+    // 应用数据守门 / 通用纪律 / 说话方式 / 协作 / 通道 / compact 规程
+    expect(SHARED_AGENT_PREFIX).toContain('### 1. 执行工具与沙箱纪律')
+    expect(SHARED_AGENT_PREFIX).toContain('核心工具：`execute(description, body)`')
+    expect(SHARED_AGENT_PREFIX).toContain('先查再用')
+    expect(SHARED_AGENT_PREFIX).toContain('应用数据一律走速查列出的 api 组')
+    expect(SHARED_AGENT_PREFIX).toContain('写操作失败不抛异常')
+    expect(SHARED_AGENT_PREFIX).toContain('### 2. 通用纪律')
+    expect(SHARED_AGENT_PREFIX).toContain('长会话交接摘要（`api.compact`）')
     // api 速查与引用交付按持有进各声部的 P1：P0 里不该出现任何组文档块与 chip/delivery
     expect(SHARED_AGENT_PREFIX).not.toContain('#### api.')
     expect(SHARED_AGENT_PREFIX).not.toContain('### 沙箱 API 速查')

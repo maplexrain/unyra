@@ -54,7 +54,7 @@ export async function enterUserScope(uid: string | null): Promise<void> {
   await hydrateFreeChat(uid)
   // 群聊流水同样跟着用户走（users/{uid}/group-chat.json，learn/groupChat）
   await hydrateGroupChat(uid)
-  // 共用提示词文件库（users/{uid}/prompts/*.md）也要在页面首帧前就位
+  // 共用提示词文件库（users/{uid}/prompts/*.xml，兼容旧 .md）也要在页面首帧前就位
   await hydratePromptFiles(uid)
   // 外部 agent 目录（users/{uid}/agents/*/agent.json）同样在首帧前载入
   await hydrateExternalAgents(uid)

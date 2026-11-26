@@ -10,6 +10,7 @@ import type { ConversationMessage, WorkSession } from '../src/agent/types'
 import { conversationMessageById } from '../src/learn/roleWork/channels'
 import type { SandboxOptions, SandboxRequest, SandboxReply } from '../src/agent/sandbox/types'
 import type { ResolvedProvider } from '../src/ai/client'
+import { AiRequestError } from '../src/ai/types'
 import type { ChatMessage, StreamChatOptions, StreamChatResult } from '../src/ai/types'
 
 const provider = { id: 't', label: 'T', baseUrl: 'http://localhost', apiKey: 'k' } as ResolvedProvider
@@ -195,6 +196,63 @@ describe('work.send 与交付', () => {
     expect(w.execTrace.map((x) => x.title)).toEqual(['回传结果'])
     expect(deliveries).toEqual([{ text: '显式交付' }])
     expect(calls).toContain('host.send')
+  })
+
+  it('运行中补任务：任务消息排在当前 assistant 之后，不会改写已有前缀', async () => {
+    const { requests, stream } = scriptedStream([
+      {
+        match: '第一棒',
+        hops: [
+          {
+            content: '先跑一段。',
+            toolCalls: [
+              {
+                id: 'w1',
+                name: 'execute',
+                arguments: JSON.stringify({
+                  description: '等一会',
+                  body: '((api) => api.wait(30))',
+                }),
+              },
+            ],
+          },
+        ],
+      },
+      { match: '第二棒', hops: [{ content: '第二棒收尾。' }] },
+    ])
+    const { manager, works } = makeManager(stream)
+    manager.api.create({ name: '接力' })
+    expect(manager.api.send({ name: '接力', text: '第一棒' })).toMatchObject({ ok: true, mode: 'started' })
+    // 第一轮还在 wait：此时补任务只能排队，不能先落进 work.messages 把 assistant 挤到后面
+    expect(manager.api.send({ name: '接力', text: '第二棒' })).toMatchObject({ ok: true, mode: 'queued' })
+    await new Promise((r) => setTimeout(r, 80))
+    await tick()
+    const messages = works()[0]!.messages
+    expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant'])
+    expect(messages[0]!.parts.some((p) => p.type === 'text' && p.text.includes('第一棒'))).toBe(true)
+    expect(messages[1]!.parts.some((p) => p.type === 'tool' && p.name === 'execute')).toBe(true)
+    expect(messages[2]!.parts.some((p) => p.type === 'text' && p.text.includes('第二棒'))).toBe(true)
+    expect(messages[3]!.parts.some((p) => p.type === 'text' && p.text.includes('第二棒收尾'))).toBe(true)
+    // 第二次请求看到的历史必须是 [第一棒, assistant 工具跳, 第二棒]，而不是把任务塞在 assistant 前
+    expect(requests[1]!.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'tool', 'user'])
+    expect(requests[1]![2]!.content).toContain('先跑一段')
+    expect(typeof requests[1]![4]!.content === 'string' ? requests[1]![4]!.content : '').toContain('第二棒')
+  })
+
+  it('work 异常终止：系统自动把状态与原因上报给 role', async () => {
+    const { manager, works, deliveries } = makeManager(async () => {
+      throw new AiRequestError('模型连接断开', 401)
+    })
+    manager.api.create({ name: '会掉线' })
+    manager.api.send({ name: '会掉线', text: '跑一下' })
+    await new Promise((r) => setTimeout(r, 100))
+    await tick()
+    expect(works()[0]!.status).toBe('error')
+    expect(works()[0]!.lastIssue).toContain('模型连接断开')
+    expect(deliveries.at(-1)?.text).toContain('work 异常终止')
+    expect(deliveries.at(-1)?.text).toContain('会掉线')
+    expect(deliveries.at(-1)?.text).toContain('模型连接断开')
+    expect(deliveries.at(-1)?.auto).toBe(true)
   })
 
   it('work 的 wait 由 work 自己接上，不借 role 的信号', async () => {

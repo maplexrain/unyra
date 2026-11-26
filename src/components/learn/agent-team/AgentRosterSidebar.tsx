@@ -61,7 +61,7 @@ export interface AgentRosterSidebarProps {
   persistCollapsed?: boolean
   /** 形态：side=左侧竖栏（默认）；top=窄宽度（容器 <800）下的顶部横栏 */
   variant?: 'side' | 'top'
-  /* ---------- 名册底部：导师目标选择器（work 列表已移到对话列表底部） ---------- */
+  /* ---------- 名册底部：导师目标选择器（work 列表已移到思维页右侧状态面板） ---------- */
   /** 导师声部的作用域目标 */
   activeGoalId?: string | null
   /** 固定目标的页签（:fixside）里目标不可切换 */

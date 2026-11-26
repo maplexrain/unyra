@@ -1,11 +1,11 @@
 /**
- * 思维列表 / 私聊消息列表里的「当前 work」卡片。
+ * 当前 role 的 work 状态列表。
  *
- * 它不是一条消息、不写进会话，也不参与上下文：只从宿主当前 role 的
- * `WorkSession[]` 现推，插在**消息列表最底下**，让用户一眼看到
+ * 它不是一条消息、不写进会话，也不参与上下文：从宿主当前 role 的
+ * `WorkSession[]` 现推，挂在思维页右侧状态面板（或私聊消息列表）里，让用户一眼看到
  * 「这个 role 手上有哪些活、各自跑到哪、占了多少上下文」。
  *
- * 点击卡片主体进入 work 二级页；右侧是删除 / 终止两个动作。
+ * 点击卡片主体进入对应 work 消息；右侧是删除 / 终止两个动作。
  * 两个动作都先弹确认框：终止尤其要用户写清声明，写不了就只能强制终止。
  */
 import { useMemo, useState } from 'react'
@@ -52,7 +52,7 @@ export function WorkDispatchList({
   activeWorkId?: string | null
   /** 私聊里用「当前 agent 的 work」，mind 里保留旧标题 */
   title?: string
-  /** 嵌在 work 窗口里时不再画自己的卡片外壳 */
+  /** 嵌在状态面板里时不再画自己的卡片外壳 */
   embedded?: boolean
   /** 强制终止：只关 loop，不向 role 发说明 */
   onStopWork?: (workId: string) => void

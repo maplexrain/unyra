@@ -30,7 +30,7 @@ import {
 } from '../../src/learn/graph'
 import { recordInput } from '../../src/learn/examRecords'
 import { MAX_CHECKS, MAX_MISTAKES } from '../../src/learn/types'
-import { bottomGap, isAtBottom, isUserScrollUp, shouldDetachByWheel, wheelPixels } from '../../src/lib/scrollFollow'
+import { bottomGap, isAtBottom, isNearBottomForNewMessage, isUserScrollUp, shouldDetachByWheel, wheelPixels } from '../../src/lib/scrollFollow'
 import { NOW, baseStore, childId, goalId, harness, ok, rootId } from './harness'
 
 /**
@@ -65,6 +65,7 @@ export function scrollTests() {
   ok(bottomGap({ scrollHeight: 1000, scrollTop: 500, clientHeight: 400 }) === 100, 'bottomGap 正常值')
   ok(bottomGap({ scrollHeight: 1000, scrollTop: 700, clientHeight: 400 }) === 0, '回弹给的负值按 0 算')
   ok(isAtBottom(0) && isAtBottom(32) && !isAtBottom(33), 'isAtBottom 的边界就是 REPIN_PX')
+  ok(isNearBottomForNewMessage(0) && isNearBottomForNewMessage(400) && !isNearBottomForNewMessage(401), '新消息自动落底用的是 400px 宽阈值')
 
   // 谁把位置往上挪的
   ok(isUserScrollUp(400, 500, 5000), '往上走且不是刚滚过滚轮 → 是用户干的')

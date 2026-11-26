@@ -73,14 +73,22 @@ export interface WorkManager {
   stopWithStatement(name: string, statement: string): WorkCallResult
 }
 
+interface PendingInjection {
+  text: string
+  /** 被注入的任务消息：等当前一段 parts 落库之后再 append，保持 user/assistant 的真实顺序 */
+  message: ConversationMessage
+}
+
 interface RunHandle {
   runId: string
   ctrl: AbortController
-  /** role 在跑动中补的指令 */
-  injections: string[]
+  /** role 在跑动中补的指令，连同任务消息一起排队 */
+  injections: PendingInjection[]
   stopRequested: boolean
   /** 用户写下的终止声明；有它时收口说明写成「用户终止」，不是 role 强制停止 */
   stopStatement?: string
+  /** 宿主级联停止（role 停止 / 卸载）导致的中断，不要再反过来给 role 上报 */
+  hostAborted: boolean
   /** 本轮是否已经显式 host.send */
   delivered: boolean
   startedAt: number
@@ -192,10 +200,37 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
     apiBrief: apiBriefForGroups(workRuntimeApiAllow(deps.roleId)),
   })
 
+  /**
+   * work 异常终止时的系统上报：不是用户/role 主动叫停，role 必须知道这轮没有正常交付。
+   * 它走普通 Work 通道消息，role 空闲就起一轮、在跑就在跳边界注入。
+   */
+  const reportAbnormal = (work: WorkSession, issue: string, kind: 'error' | 'interrupted' | 'incomplete' | 'unavailable'): void => {
+    const label =
+      kind === 'error'
+        ? '出错'
+        : kind === 'interrupted'
+          ? '被中断'
+          : kind === 'incomplete'
+            ? '异常结束（输出不完整）'
+            : '无法启动'
+    const text = [
+      `【work 异常终止】work「${work.name}」本轮${label}。`,
+      kind === 'incomplete' ? '已交付的部分可能不完整，请先核对再决定是否沿用。' : '本轮没有正常交付。',
+      `原因：${issue}`,
+      '上下文与已完成的进度仍然保留。请据此判断：续派同一个 work、改用其它 work，或先向用户说明当前结果。',
+    ].join('\n')
+    const latest = deps.getWorks().find((w) => w.id === work.id) ?? work
+    deps.deliverToRole(latest, text, {
+      auto: true,
+      ...(latest.delivery ? { delivery: latest.delivery } : {}),
+    })
+  }
+
   const startLoop = (work: WorkSession): void => {
     const cfg = turn
     if (!cfg) {
       patch(work.id, (w) => ({ ...w, status: 'error', lastIssue: '没有可用的轮次配置（模型/沙箱未就绪）' }))
+      reportAbnormal(work, '没有可用的轮次配置（模型/沙箱未就绪）', 'unavailable')
       return
     }
     const handle: RunHandle = {
@@ -203,6 +238,7 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
       ctrl: new AbortController(),
       injections: [],
       stopRequested: false,
+      hostAborted: false,
       delivered: false,
       startedAt: Date.now(),
     }
@@ -243,11 +279,17 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
           deps.onEvent?.(work.id, handle.runId, e)
         },
         injections: {
-          pull: () => handle.injections.shift() ?? null,
+          pull: () => {
+            const item = handle.injections.shift()
+            return item ? { text: item.text, commit: () => appendMessage(work.id, item.message) } : null
+          },
           flush: (ps) => flushParts(work.id, ps),
-          // 任务消息在 send 时已经落进 work.messages（排队与起轮都走那一份），
-          // 这里不能再 append：否则同一句注入会被存两遍。
-          append: () => {},
+          /*
+           * 任务消息不能在 send 时先落库：当前这一轮可能还有 parts 没 flush，
+           * 先落会变成「user 任务在 assistant 回复之前」，下一次还原历史时前缀就分叉了。
+           * 这里等 flush 完再 append，保证落库顺序与实发顺序一致。
+           */
+          append: (injection) => injection.commit?.(),
         },
         ...(deps.stream ? { stream: deps.stream } : {}),
       })
@@ -296,8 +338,12 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
       ...(issue ? { lastIssue: issue } : {}),
     }))
     if (outcome.parts.length) flushParts(work.id, outcome.parts, outcome.usage ?? undefined)
+    /*
+     * 收口时还排着的注入没有机会再进跳边界：按「先 assistant 收口、再 user 任务」的顺序
+     * 补落库，至少不把任务和已经实发的回复倒过来；下一轮 send 可以接着处理它们。
+     */
+    for (const pending of handle.injections.splice(0)) appendMessage(work.id, pending.message)
     deps.onRunEnd?.(work.id, handle.runId)
-    handle.injections.length = 0
 
     // host.send 是主路径；漏了就把最后一段正文自动回传（标记 auto），role 仍能收口。
     if (!handle.delivered && !handle.stopRequested && outcome.delivery && outcome.status !== 'interrupted' && outcome.status !== 'error') {
@@ -306,6 +352,25 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
         auto: true,
         ...(latest.delivery ? { delivery: latest.delivery } : {}),
       })
+    }
+
+    /*
+     * 异常终止与「用户/role 主动停止」分开：主动停止已经由 stopWithStatement / api.stop
+     * 负责（后者明确不通知 role），只有出错、非主动中断、输出不完整或无法启动才由系统
+     * 自动上报，避免停止操作反过来又激活 role。hostAborted 是 role 停止 / 页面卸载时
+     * 的级联中断，也排除。
+     */
+    if (
+      !handle.stopRequested &&
+      !handle.hostAborted &&
+      (outcome.status === 'error' || outcome.status === 'interrupted' || outcome.status === 'incomplete')
+    ) {
+      const latest = deps.getWorks().find((w) => w.id === work.id) ?? work
+      reportAbnormal(
+        latest,
+        issue ?? (outcome.status === 'error' ? 'work 执行失败' : '任务被中止，没有交付'),
+        outcome.status,
+      )
     }
   }
 
@@ -417,14 +482,18 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
         ...(input.images?.length ? { images: input.images } : {}),
         ...(input.files?.length ? { files: input.files } : {}),
       }
-      appendMessage(w.id, task)
       deps.appendOutbound(w, body, { ...(quoted ? { quoteMessageId: quoted.id } : {}) })
       const handle = running.get(w.id)
       if (handle) {
-        handle.injections.push(body)
+        // 运行中：任务消息不能先落库，和注入一起排队；到跳边界 flush 完当前 parts 再 append。
+        // 否则本次已实发的 assistant 消息会被新任务挤到后面，下次重建历史时前缀从中间分叉。
+        handle.injections.push({ text: body, message: task })
+        patch(w.id, (cur) => ({ ...cur, lastActiveAt: Date.now() }))
         return { ok: true, name: w.name, mode: 'queued' }
       }
-      startLoop({ ...w, messages: [...w.messages, task] })
+      appendMessage(w.id, task)
+      const latest = deps.getWorks().find((cur) => cur.id === w.id)
+      startLoop(latest ?? { ...w, messages: [...w.messages, task] })
       return { ok: true, name: w.name, mode: 'started' }
     },
   }
@@ -435,7 +504,10 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
       turn = config
     },
     abortAll: () => {
-      for (const h of running.values()) h.ctrl.abort()
+      for (const h of running.values()) {
+        h.hostAborted = true
+        h.ctrl.abort()
+      }
     },
     hasRunning: () => running.size > 0,
     stopWithStatement: (name: string, statement: string): WorkCallResult => {

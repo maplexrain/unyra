@@ -24,6 +24,23 @@ describe('normalizeChannels', () => {
     expect(out.some((m) => m.id === 'bad')).toBe(false)
   })
 
+  it('旧 detail 字段载入时折入 text 的分隔语法，不再保留第二个正文字段', () => {
+    const out = normalizeChannels([
+      {
+        id: 'e1',
+        kind: 'user',
+        direction: 'out',
+        from: { kind: 'role', id: 'tutor', name: '导师龟' },
+        to: peer,
+        text: '极限讲义更新了。',
+        detail: '补了定义和两道例题。',
+        ts: now,
+      },
+    ])!
+    expect(out[0]!.text).toBe('极限讲义更新了。\n\n---\n\n补了定义和两道例题。')
+    expect('detail' in out[0]!).toBe(false)
+  })
+
   it('不是数组 / 全坏 → undefined（对话上不写这个字段）', () => {
     expect(normalizeChannels('乱写')).toBeUndefined()
     expect(normalizeChannels([{ id: 'x' }])).toBeUndefined()

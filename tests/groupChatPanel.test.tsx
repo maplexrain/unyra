@@ -59,6 +59,13 @@ describe('GroupChatPanel', () => {
     expect(host.textContent).toContain('@导师龟 收到，已派 work')
     expect(host.textContent).toContain('@导师龟')
     expect(host.textContent).not.toContain('思维')
+    // 顶栏与输入框父容器都不再有独立底色 / 下边框
+    const header = host.querySelector('[data-group-chat-header]')
+    expect(header?.className).not.toContain('border-b')
+    expect(header?.className).not.toContain('bg-')
+    const composer = host.querySelector('[data-group-composer]')
+    expect(composer?.className).not.toContain('bg-card')
+    expect(composer?.className).toContain('bg-transparent')
     act(() => {
       root.unmount()
     })
@@ -70,8 +77,11 @@ describe('GroupChatPanel', () => {
     document.body.appendChild(host)
     const root = createRoot(host)
     const m: ChannelMessage = {
-      ...message('m1', { kind: 'role', id: 'tutor', name: '导师龟' }, '@用户 极限讲义已经更新'),
-      detail: '详细依据：先补了极限定义，再补了夹逼定理例题，最后把产物放到 微积分/极限。',
+      ...message(
+        'm1',
+        { kind: 'role', id: 'tutor', name: '导师龟' },
+        '@用户 极限讲义已经更新\n\n---\n\n详细依据：先补了极限定义，再补了夹逼定理例题，最后把产物放到 微积分/极限。',
+      ),
       mention: { kind: 'role', id: 'dispatcher', name: '经理龟' },
       delivery: { files: [{ path: '微积分/极限', action: 'updated' }], sources: [] },
     }

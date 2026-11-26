@@ -38,7 +38,7 @@ describe('role 层：只暴露沟通与调度面', () => {
     it(voice + ': 只有固定组，没有任何领域组', () => {
       const text = build(voice)
       const held = AGENT_API_PLANES[voice].groups
-      expect(held).toEqual(['tmp', 'work', 'chat'])
+      expect(held).toEqual(['tmp', 'work', 'chat', 'agent'])
       expect(AGENT_API_PLANES[voice].topLevel).toEqual(['compact'])
       for (const g of held) expect(text).toContain('#### api.' + g + ' —')
       for (const g of ROLE_DOMAIN_GROUPS) {
@@ -52,7 +52,7 @@ describe('role 层：只暴露沟通与调度面', () => {
       expect(text).not.toContain('【出卷】试卷命题')
       expect(text).not.toContain('【生成课堂】课堂课件生成')
       expect(text).not.toContain('【修复函数图像】Plot')
-      expect(text).not.toContain('### 结构化教学排版组件')
+      expect(text).not.toContain('### 2. 结构化组件')
       expect(text).not.toContain('```plot')
       expect(text).not.toContain('### 非固定组（本 role 专属）')
     })
@@ -64,8 +64,8 @@ describe('role 层：只暴露沟通与调度面', () => {
     expect(buildFixerSystem()).not.toContain('交付登记纪律：')
   })
 
-  it('role 固定面是六位挂目标 role 的交集：tmp / work / chat + compact', () => {
-    expect(FIXED_API_PLANE.groups).toEqual(['tmp', 'work', 'chat'])
+  it('role 固定面是六位挂目标 role 的交集：tmp / work / chat / agent + compact', () => {
+    expect(FIXED_API_PLANE.groups).toEqual(['tmp', 'work', 'chat', 'agent'])
     expect(FIXED_API_PLANE.topLevel).toEqual(['compact'])
   })
 })
@@ -74,7 +74,7 @@ describe('work 层：领域能力、语法与规程都在这里', () => {
   for (const role of ['tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer'] as AgentProfileId[]) {
     it(role + ': work 提示词带本 role 的领域面', () => {
       const text = buildWorkSystem(role)
-      expect(text).toContain('你是 role 派出的**工作会话（work）**')
+      expect(text).toContain('你是 role 派出的内部工作会话（work）')
       expect(text).toContain('api.host.send')
       // tutor work 要有 node / workspace；examiner work 要有 exam；designer 要有 classroom
       if (role === 'tutor') {
@@ -103,11 +103,11 @@ describe('work 层：领域能力、语法与规程都在这里', () => {
   it('排版配方与围栏语法只在内容类 work', () => {
     for (const role of ['tutor', 'examiner', 'designer'] as AgentProfileId[]) {
       const text = buildWorkSystem(role)
-      expect(text).toContain('### 结构化教学排版组件')
+      expect(text).toContain('### 2. 结构化组件')
       expect(text).toContain('```plot')
     }
     for (const role of ['dispatcher', 'researcher', 'fixer'] as AgentProfileId[]) {
-      expect(buildWorkSystem(role)).not.toContain('### 结构化教学排版组件')
+      expect(buildWorkSystem(role)).not.toContain('### 2. 结构化组件')
     }
   })
 })

@@ -5,13 +5,11 @@
  * 于是那两个文件都能引用它而不互相 import（那会绕成环）。
  */
 
-import type { ReactNode } from 'react'
 import type {
   AgentPart,
   ConversationMessage,
   ContextSummary,
   MessageImage,
-  MessageUsage,
 } from '../../../agent/types'
 
 export interface MessageListProps {
@@ -45,20 +43,38 @@ export interface MessageListProps {
   emptyVoice?: string
   emptyName?: string
   /**
-   * 思维层：消息不带聊天气泡；相邻思考/工具/提示词收成一条可折叠过程组，
-   * 消息行头部另画渠道与上下文账。work 视图恒为 true；role 视图由 chat/mind 页签决定。
+   * 思维层：消息不带聊天气泡；每条消息内部的思考 / 工具 / 正文拆成平级原子行，
+   * work 消息也走同一套拆分，再按时间戳并入 role 时间线。消息行头部另画渠道与上下文账。
    */
   mind?: boolean
   /** 当前 role 的显示名：mind 无信封行与用户消息对端标签用 */
   agentName?: string
   /** 当前 role 的头像 id */
   agentAvatarId?: string
-  /** 当前 role 的 token 账：mind 顶部画上下文占用 / 累计消耗 */
-  usages?: MessageUsage[]
-  /** work 消息的内嵌折叠窗口（默认收起），由 AgentPanel 统一渲染在列表底部 */
-  workWindow?: ReactNode
-  /** 上下文摘要的标题主语（role 名），只影响文案 */
-  contextSubject?: string
+  /**
+   * work 消息：只用于思维列表的线性展示，按时间戳并入 role 消息之间。
+   * 它们不写回 conversation.messages，也不参与上下文。
+   */
+  workMessages?: WorkTimelineMessage[]
   /** 最近窗口的复位键：切换会话 / 目标时必须回到尾部，不沿用上一段的加载深度 */
   resetKey?: string
+}
+
+/**
+ * 思维列表里的一条 work 消息。
+ *
+ * 它和 role 消息共用同一条时间线，所以「这是哪条 work 的消息」必须跟着每条 item 走，
+ * 不能靠外层一个连续 work 块来隐式绑定；ts 是消息本身的原始时间戳，order 是同一条
+ * work 内的会话序号，时间线用二者推出不倒退的排序位置（见 useMessageList）。
+ */
+export interface WorkTimelineMessage {
+  m: ConversationMessage
+  workId: string
+  workName: string
+  ts: number
+  /**
+   * work 会话内的消息序号：运行中补的任务在发送时刻可能早于上一条 assistant 的
+   * 落库时刻，但真实顺序是 assistant 先、任务后，排序时优先看它。
+   */
+  order: number
 }

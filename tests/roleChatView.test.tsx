@@ -72,10 +72,11 @@ describe('RoleChatView', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
-    const m: ChannelMessage = {
-      ...roleOut('c1', '导师龟', '极限讲义更新了。'),
-      detail: '补了定义，也补了两道例题。',
-    }
+    const m: ChannelMessage = roleOut(
+      'c1',
+      '导师龟',
+      '极限讲义更新了。\n\n---\n\n补了定义，也补了两道例题。',
+    )
     act(() => {
       root.render(
         createElement(RoleChatView, {
@@ -88,6 +89,9 @@ describe('RoleChatView', () => {
     })
     expect(host.querySelector('[data-agent-status="running"]')?.textContent).toContain('工作中')
     expect(host.textContent).toContain('极限讲义更新了。')
+    // 气泡不再用 whitespace-pre-wrap：那会把 Markdown HTML 末尾的换行渲染成底部空行
+    const bubble = host.querySelector('[data-role-bubble]')
+    expect(bubble?.className).not.toContain('whitespace-pre-wrap')
     expect(host.textContent).not.toContain('补了定义')
     act(() => {
       host.querySelector<HTMLButtonElement>('[data-bubble-detail-toggle]')?.click()

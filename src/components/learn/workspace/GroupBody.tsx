@@ -44,6 +44,7 @@ import { EditorTabLayer } from './EditorTabLayer'
 import { SideSplitLayout } from './SideSplitLayout'
 import { paneInfo, examCopyOf, conceptKeysOf } from './panes'
 import { createVideoTabBridge } from './videoTabBridge'
+import { returnToAgentPage } from './agentSlotTabs'
 import { memoryDocKey } from '../../../lib/memoryMode'
 import { ZONE_BOX } from './drag'
 
@@ -541,6 +542,17 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               agentId={gTab.ref.agentId}
               layer={gTab.ref.layer}
               fileId={gTab.ref.fileId}
+              onBack={() =>
+                returnToAgentPage({
+                  groupId,
+                  promptTabId: gTab.id,
+                  agentTabs: gAgentTeamTabs,
+                  activeGoalId,
+                  activateTab,
+                  openTab,
+                  closeTab,
+                })
+              }
             />
           ) : gTab?.ref.kind === 'mind' ? (
             /*

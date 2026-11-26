@@ -10,6 +10,7 @@ import type { AgentProfileId } from '../agentProfile'
 import type { ChannelAsk, ChannelMessage, Conversation, ConversationMessage, WorkSession, WorkStatus } from '../types'
 import { normalizeAskForm } from '../sandbox/askForm'
 import { normalizeDelivery } from '../delivery'
+import { splitChatText } from '../../lib/chatText'
 
 /** 旧 subagent 数据（只在迁移时读，旧结构已从类型面移除） */
 interface LegacySubSession {
@@ -65,6 +66,14 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
     if (m.kind !== 'user' && m.kind !== 'agent' && m.kind !== 'work' && m.kind !== 'group') continue
     if (m.direction !== 'in' && m.direction !== 'out') continue
     if (!m.from || !m.to || typeof m.text !== 'string') continue
+    // 旧数据兼容：历史消息曾用独立 detail 字段存详细版；载入时折进 text 的分隔语法，
+    // 之后类型与持久化都只保留 text，避免再维护第二个正文通道。
+    const legacyDetail =
+      typeof (m as { detail?: unknown }).detail === 'string' ? (m as { detail: string }).detail.trim() : ''
+    const text =
+      legacyDetail && !splitChatText(m.text).detail
+        ? `${m.text.trimEnd()}\n\n---\n\n${legacyDetail}`
+        : m.text
     const ask = normalizeChannelAsk(m.ask)
     const delivery = normalizeDelivery(m.delivery)
     const mention =
@@ -77,8 +86,7 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
       direction: m.direction,
       from: m.from,
       to: m.to,
-      text: m.text,
-      ...(typeof m.detail === 'string' && m.detail.trim() ? { detail: m.detail } : {}),
+      text,
       ts: typeof m.ts === 'number' ? m.ts : Date.now(),
       ...(m.attachments ? { attachments: m.attachments } : {}),
       ...(ask ? { ask } : {}),

@@ -26,6 +26,12 @@ export interface WorkRunOutcome {
   error?: string
 }
 
+export interface WorkRunInjection {
+  text: string
+  /** flush 之后执行：把这条注入对应的任务消息按正确顺序落进 work.messages */
+  commit?: () => void
+}
+
 export interface WorkRunOptions {
   system: string
   /** work 会话 id：前缀门禁按它分键 */
@@ -44,9 +50,9 @@ export interface WorkRunOptions {
   onEvent?: (e: AgentEvent) => void
   /** role 在 work 跑动中补的指令：在「当前消息完整」的边界插入 */
   injections?: {
-    pull: () => string | null
+    pull: () => WorkRunInjection | null
     flush: (parts: AgentPart[]) => void
-    append: (text: string) => void
+    append: (injection: WorkRunInjection) => void
   }
   stream?: StreamFn
 }
@@ -74,14 +80,14 @@ export async function runWorkTask(opts: WorkRunOptions): Promise<WorkRunOutcome>
 
   const atBoundary = async (): Promise<AgentInjection | null> => {
     if (!opts.injections) return null
-    const text = opts.injections.pull()
-    if (text === null) return null
+    const injection = opts.injections.pull()
+    if (!injection) return null
     if (parts.length) {
       opts.injections.flush(parts)
       parts = []
     }
-    opts.injections.append(text)
-    return { role: 'user', content: text }
+    opts.injections.append(injection)
+    return { role: 'user', content: injection.text }
   }
 
   await runAgent({

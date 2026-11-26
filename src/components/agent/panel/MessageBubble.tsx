@@ -76,6 +76,10 @@ export interface MessageRowProps {
   goalId?: string
   /** 思维层：去掉聊天气泡与聊天操作，消息行头部另由 MindMessageRow 提供 */
   mind?: boolean
+  /** 思维层里铺满整行（外部 agent / work 消息不再受 450px 气泡宽度限制） */
+  fill?: boolean
+  /** 正在流式生成：只影响正文里的光标的排版，不改消息结构 */
+  streaming?: boolean
 }
 
 /**
@@ -93,6 +97,8 @@ export const MessageRow = memo(function MessageRow({
   onOpenFile,
   goalId,
   mind = false,
+  fill = false,
+  streaming = false,
 }: MessageRowProps) {
   useLocale()
   const fadedCls = faded ? ' opacity-55' : ''
@@ -118,7 +124,7 @@ export const MessageRow = memo(function MessageRow({
         <div
           className={
             mind
-              ? 'min-w-0 max-w-[450px]'
+              ? 'min-w-0 ' + (fill ? 'flex-1' : 'max-w-[450px]')
               : 'max-w-[450px] rounded-lg ' + (flash ? 'moji-msg-flash' : '')
           }
         >
@@ -168,7 +174,7 @@ export const MessageRow = memo(function MessageRow({
       }}
       className={'group relative ' + (mind ? 'mb-1' : 'mb-4') + fadedCls}
     >
-      <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} />
+      <Parts parts={m.parts} prelude={prelude} onResumeNotice={onResumeNotice} streaming={streaming} />
       {m.delivery && <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={goalId} />}
       {m.usage && !mind && (
         <div className="mt-1">
@@ -652,7 +658,7 @@ function ChannelMessageBlock({ part }: { part: Extract<AgentPart, { type: 'chann
  * 它们是**这一轮被补进上下文的提示词**——与思考、工具调用同一层。
  * 透明化不变：上下文里被注入了什么，用户随时点开就能看到。
  */
-function InjectBlock({ item }: { item: InjectItem }) {
+export function InjectBlock({ item }: { item: InjectItem }) {
   const [open, setOpen] = useState(false)
   return (
     <div>

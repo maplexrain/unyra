@@ -25,7 +25,7 @@ import { native, type FlushItem, type StorageEntry, type StorageInfo } from './n
  *
  * 磁盘是唯一事实来源的目录（如 prompts/ 下的提示词文件）需要在保存后重新读回内存，
  * 但它们不经过任何一方 store，只能由写入口本身广播。监听者拿用户内相对路径
- * （`prompts/xx.md`）自行判断是否与自己有关。
+ * （`prompts/xx.xml`，兼容旧 `prompts/xx.md`）自行判断是否与自己有关。
  */
 type UserTextWrittenListener = (rel: string) => void
 const userTextWrittenListeners = new Set<UserTextWrittenListener>()

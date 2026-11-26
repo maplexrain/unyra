@@ -19,7 +19,7 @@ import {
   subscribePromptFiles,
   type PromptFileScope,
 } from '../../../agent/promptFileStore'
-import { listPromptFiles, type PromptFileItem } from '../../../learn/ai/promptFiles'
+import { buildPromptFileSystem, listPromptFiles, type PromptFileItem } from '../../../learn/ai/promptFiles'
 import { t } from '../../../i18n'
 
 function withLayerOrder(
@@ -80,6 +80,7 @@ export function PromptFilesView({
   const files = listPromptFiles(agentId, layer, settings)
   const disabled = settings.disabled?.[agentId]?.[layer] ?? []
   const selectedIds = new Set(files.map((file) => file.id))
+  const preview = buildPromptFileSystem(agentId, layer, settings)
   const available = external.filter(
     (file) =>
       (file.scope === 'common' || file.agentId === agentId) &&
@@ -94,6 +95,9 @@ export function PromptFilesView({
     const idx = files.findIndex((file) => file.id === id)
     const next = idx + delta
     if (idx < 0 || next < 0 || next >= files.length) return
+    if (files[idx]?.pinned) return
+    // 置顶的基座段之前不许插队：移动只在非置顶区内进行
+    if (files[next]?.pinned) return
     const ordered = [...files]
     const [row] = ordered.splice(idx, 1)
     if (!row) return
@@ -102,6 +106,7 @@ export function PromptFilesView({
   }
 
   const toggle = (id: string) => {
+    if (files.find((file) => file.id === id)?.pinned) return
     const next = disabled.includes(id) ? disabled.filter((x) => x !== id) : [...disabled, id]
     onChange(withDisabled(settings, agentId, layer, next))
   }
@@ -325,43 +330,54 @@ export function PromptFilesView({
               {file.builtin ? t(file.name) : file.name}
             </span>
             <span className="inline-flex shrink-0 items-center rounded bg-line/55 px-1.5 py-px text-[10px] text-ink-faint">
-              {file.builtin ? t('内置') : scopeBadge(file.scope)}
+              {file.pinned ? t('基座 · 置顶') : file.builtin ? t('内置') : scopeBadge(file.scope)}
             </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                move(file.id, -1)
-              }}
-              disabled={idx === 0}
-              className="rounded p-0.5 text-ink-faint hover:bg-line/40 disabled:opacity-25"
-              title={t('上移')}
+            <span
+              data-prompt-file-chars
+              className="shrink-0 whitespace-nowrap text-[10.5px] tabular-nums text-ink-faint"
+              title={t('这份文件的字符数')}
             >
-              <ArrowUp size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                move(file.id, 1)
-              }}
-              disabled={idx === files.length - 1}
-              className="rounded p-0.5 text-ink-faint hover:bg-line/40 disabled:opacity-25"
-              title={t('下移')}
-            >
-              <ArrowDown size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                toggle(file.id)
-              }}
-              className={`rounded p-0.5 hover:bg-line/40 ${file.enabled ? 'text-ink-soft' : 'text-ink-faint'}`}
-              title={file.enabled ? t('停用') : t('启用')}
-            >
-              {file.enabled ? <Eye size={13} /> : <EyeOff size={13} />}
-            </button>
+              {t('{0} 字符', file.content.length)}
+            </span>
+            {!file.pinned && (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    move(file.id, -1)
+                  }}
+                  disabled={idx === 0}
+                  className="rounded p-0.5 text-ink-faint hover:bg-line/40 disabled:opacity-25"
+                  title={t('上移')}
+                >
+                  <ArrowUp size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    move(file.id, 1)
+                  }}
+                  disabled={idx === files.length - 1}
+                  className="rounded p-0.5 text-ink-faint hover:bg-line/40 disabled:opacity-25"
+                  title={t('下移')}
+                >
+                  <ArrowDown size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    toggle(file.id)
+                  }}
+                  className={`rounded p-0.5 hover:bg-line/40 ${file.enabled ? 'text-ink-soft' : 'text-ink-faint'}`}
+                  title={file.enabled ? t('停用') : t('启用')}
+                >
+                  {file.enabled ? <Eye size={13} /> : <EyeOff size={13} />}
+                </button>
+              </>
+            )}
             {!file.builtin && (
               <button
                 type="button"
@@ -391,6 +407,24 @@ export function PromptFilesView({
           </li>
         ))}
       </ul>
+
+      {/* 列表下方是运行时真正拼出来的整份提示词：顺序、启停与空行都和下一轮注入一致。 */}
+      <div
+        data-prompt-preview
+        aria-label={t('拼接后的提示词预览')}
+        className="mt-3 rounded-lg border border-line/70 bg-paper-deep/30 px-2.5 py-2"
+      >
+        <div className="flex min-w-0 items-center gap-1.5">
+          <FileText size={12} className="shrink-0 text-seal/75" />
+          <span className="text-[11.5px] font-medium text-ink-strong">{t('拼接后的提示词预览')}</span>
+          <span className="ml-auto shrink-0 text-[10.5px] tabular-nums text-ink-faint">
+            {t('{0} 字符', preview.trim().length)}
+          </span>
+        </div>
+        <pre className="mt-2 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-paper px-3 py-2.5 font-mono text-[11px] leading-relaxed text-ink-soft">
+          {preview.trim() ? preview : t('这一层还没有启用的提示词文件。')}
+        </pre>
+      </div>
     </div>
   )
 }

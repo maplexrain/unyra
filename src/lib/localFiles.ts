@@ -22,7 +22,7 @@ type LocalFileWrittenListener = (path: string) => void
 const localFileWrittenListeners = new Set<LocalFileWrittenListener>()
 
 /**
- * 订阅「外部文本文件写成功」。数据目录里的 prompts/*.md 也会被当作本地文件编辑，
+ * 订阅「外部文本文件写成功」。数据目录里的 prompts/*.xml（兼容旧 .md）也会被当作本地文件编辑，
  * 它们需要知道保存发生了才能重新读回内容（见 agent/promptFileStore）。
  */
 export function onLocalFileWritten(listener: LocalFileWrittenListener): () => void {

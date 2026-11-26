@@ -379,11 +379,12 @@ describe('在途轮次：增量落库的形状与中断恢复（见 learn/agent/
     expect(first.inflight).toBeDefined()
     const second = upsertAssistantInFlight(
       first,
-      { id: 'a1', role: 'assistant', parts: [runningTool, { type: 'text', text: '好了' }], ts: now },
+      { id: 'a1', role: 'assistant', parts: [runningTool, { type: 'text', text: '好了' }], ts: now + 5000 },
       true,
     )
     expect(second.messages.map((m) => m.id)).toEqual(['u1', 'a1'])
     expect(second.messages[1].parts).toHaveLength(2)
+    expect(second.messages[1].ts).toBe(now)
     expect(second.inflight).toBeUndefined()
   })
 })

@@ -120,11 +120,10 @@ describe('chat.send 三通道', () => {
     expect(appended[0]!.message.ts).toBeGreaterThan(0)
   })
 
-  it('user 通道：detail 留在同一封通道消息里，正文仍是外层短汇报', async () => {
+  it('user 通道：text 里的简短 / 详细分隔线原样保留在同一封消息里', async () => {
     const { chat, appended } = makeChat()
-    await chat.send({ channel: 'user', text: '极限讲义更新了。', detail: '补了定义和两道例题。' })
-    expect(appended[0]!.message.text).toBe('极限讲义更新了。')
-    expect(appended[0]!.message.detail).toBe('补了定义和两道例题。')
+    await chat.send({ channel: 'user', text: '极限讲义更新了。\n\n---\n\n补了定义和两道例题。' })
+    expect(appended[0]!.message.text).toBe('极限讲义更新了。\n\n---\n\n补了定义和两道例题。')
   })
 
 
@@ -216,10 +215,9 @@ describe('chat.send 三通道', () => {
     )
     const chat = api.chat as { send: (input: ChatSendInput) => Promise<{ ok: boolean }> }
     expect(
-      await chat.send({ channel: 'user', text: '外层短汇报', detail: '内层详细依据' }),
+      await chat.send({ channel: 'user', text: '外层短汇报\n\n---\n\n内层详细依据' }),
     ).toMatchObject({ ok: true })
-    expect(passed!.text).toBe('外层短汇报')
-    expect(passed!.detail).toBe('内层详细依据')
+    expect(passed!.text).toBe('外层短汇报\n\n---\n\n内层详细依据')
     expect(
       await chat.send({ channel: 'agent', to: 'dispatcher', text: '阶段一完成', silent: true }),
     ).toMatchObject({ ok: true })
@@ -438,7 +436,7 @@ describe('dispatch：忙时排队、空闲起轮、跳边界注入', () => {
     ts: 1,
   })
 
-  it('detail：模型上下文拿到完整详细版，通道流水仍只把外层当正文', () => {
+  it('text 分隔线：模型上下文拿到完整详细版，通道流水仍保留完整正文', () => {
     const { started, channels } = fakeHost(new Set())
     const req: RoleTurnRequest = {
       conversationId: 'c1',
@@ -447,13 +445,13 @@ describe('dispatch：忙时排队、空闲起轮、跳边界注入', () => {
       stamp: { channel: 'agent', from: { kind: 'role', id: 'dispatcher', name: '经理龟' }, to: { kind: 'role', id: 'tutor', name: '导师龟' }, ts: 1, envelopeId: 'e3' },
       envelopeId: 'e3',
     }
-    const detailed: ChannelMessage = {
-      ...envelope('e3', '三条来源已经核过。'),
-      detail: '1. 官网支持；2. 第二条与官方口径冲突；3. 引用位置在第三节。',
-    }
+    const detailed: ChannelMessage = envelope(
+      'e3',
+      '三条来源已经核过。\n\n---\n\n1. 官网支持；2. 第二条与官方口径冲突；3. 引用位置在第三节。',
+    )
     expect(deliverInbound(req, detailed)).toBe(true)
-    expect(channels[0]!.text).toBe('三条来源已经核过。')
-    expect(channels[0]!.detail).toContain('第二条与官方口径冲突')
+    expect(channels[0]!.text).toContain('---')
+    expect(channels[0]!.text).toContain('第二条与官方口径冲突')
     expect(started[0]!.text).toContain('【详细汇报】')
     expect(started[0]!.text).toContain('第二条与官方口径冲突')
   })

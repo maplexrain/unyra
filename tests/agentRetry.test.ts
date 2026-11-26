@@ -269,3 +269,40 @@ describe('运行时的重发循环', () => {
     expect(r.text).toContain('查到了，下面开讲。')
   })
 })
+
+/**
+ * 流式片段是 React state updater 里的输入：StrictMode 会把 updater 重复跑一遍。
+ * 如果 applyEvent 原地改片段对象，第二次仍从同一份 prev 出发，就会把同一个 delta
+ * 叠两遍——这正是 work 实时行出现「参考参考、说明说明」重复的根因。
+ */
+describe('applyEvent 不得原地改写共享的片段对象', () => {
+  const replay = (prev: AgentPart[], e: AgentEvent): AgentPart[] => {
+    const parts = [...prev]
+    applyEvent(parts, e)
+    return parts
+  }
+
+  it('同一个 thinking / text 事件重复应用，旧 state 不变、结果一致', () => {
+    const thinkingBase: AgentPart[] = [{ type: 'thinking', text: '参考' }]
+    const e: AgentEvent = { type: 'thinking', delta: '说明' }
+    const first = replay(thinkingBase, e)
+    const second = replay(thinkingBase, e)
+    expect(thinkingBase).toEqual([{ type: 'thinking', text: '参考' }])
+    expect(first).toEqual([{ type: 'thinking', text: '参考说明' }])
+    expect(second).toEqual(first)
+
+    const textBase: AgentPart[] = [{ type: 'text', text: '先' }]
+    const te: AgentEvent = { type: 'text', delta: '讲' }
+    expect(replay(textBase, te)).toEqual([{ type: 'text', text: '先讲' }])
+    expect(textBase).toEqual([{ type: 'text', text: '先' }])
+  })
+
+  it('tool-result 替换成新对象，旧工具片段仍保留原来的 result', () => {
+    const base: AgentPart[] = [
+      { type: 'tool', id: 't1', name: 'execute', args: '{}', result: '', ok: true, status: 'running' },
+    ]
+    const first = replay(base, { type: 'tool-result', id: 't1', name: 'execute', result: '完成', ok: true })
+    expect(base[0]).toMatchObject({ type: 'tool', result: '' })
+    expect(first[0]).toMatchObject({ type: 'tool', result: '完成', status: 'done' })
+  })
+})

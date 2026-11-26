@@ -7,38 +7,55 @@
 
 import type { AgentEvent, AgentPart } from '../../agent/types'
 
-/** 把运行时事件累加进 parts（原地修改，外层用新数组触发渲染） */
+/**
+ * 把运行时事件累加进 parts。
+ *
+ * 只增删 / 替换传入数组里的槽位，**不原地修改已有片段对象**：调用方常把上一份 state
+ * 浅拷贝后交给 React 的 state updater，而 StrictMode 会把 updater 重放一遍；原地 +=
+ * 会让同一个 delta 叠两次（work 实时思考行出现「参考参考、说明说明」的根因）。
+ */
 export function applyEvent(parts: AgentPart[], e: AgentEvent): void {
   switch (e.type) {
     case 'thinking': {
       const last = parts[parts.length - 1]
-      if (last && last.type === 'thinking') last.text += e.delta
-      else parts.push({ type: 'thinking', text: e.delta })
+      /*
+       * 不原地改 last.text：调用方常把 parts 浅拷贝后再传进来（流式槽位 / work 实时槽位），
+       * 片段对象会和上一份 state 共享。StrictMode 会重复调用 state updater，第二次仍从
+       * 同一份 prev 出发，原地 += 就会把同一个 delta 叠两遍——界面上的思考/正文出现
+       * 「参考参考、说明说明」式的重复。替换成新对象，updater 才是可重放的纯函数。
+       */
+      if (last && last.type === 'thinking') {
+        parts[parts.length - 1] = { type: 'thinking', text: last.text + e.delta }
+      } else parts.push({ type: 'thinking', text: e.delta })
       break
     }
     case 'text': {
       const last = parts[parts.length - 1]
-      if (last && last.type === 'text') last.text += e.delta
-      else parts.push({ type: 'text', text: e.delta })
+      if (last && last.type === 'text') {
+        parts[parts.length - 1] = { type: 'text', text: last.text + e.delta }
+      } else parts.push({ type: 'text', text: e.delta })
       break
     }
     case 'tool-call':
       parts.push({ type: 'tool', id: e.id, name: e.name, args: e.args, result: '', ok: true, status: 'running' })
       break
     case 'tool-result': {
-      const p = parts.find((x): x is Extract<AgentPart, { type: 'tool' }> => x.type === 'tool' && x.id === e.id)
-      if (p) {
-        p.result = e.result
-        p.ok = e.ok
-        p.soft = e.soft
+      const at = parts.findIndex((x) => x.type === 'tool' && x.id === e.id)
+      if (at >= 0) {
+        const p = parts[at] as Extract<AgentPart, { type: 'tool' }>
         /*
          * 三档，不是两档：只有「这段代码根本跑不起来」才算失败；「跑完了，但其中某几次
          * api 调用没有生效」是调用级失败——代码这一层已经交付了，状态仍是完成，
          * 只是界面上点一枚黄（见 ToolCard）。
          */
-        p.status = e.ok || e.soft ? 'done' : 'error'
-        // 工具附带的图片（如看图 / 读图 api 附带了一张图）：只存引用，字节在磁盘上
-        if (e.images?.length) p.images = e.images
+        parts[at] = {
+          ...p,
+          result: e.result,
+          ok: e.ok,
+          soft: e.soft,
+          status: e.ok || e.soft ? 'done' : 'error',
+          ...(e.images?.length ? { images: e.images } : {}),
+        }
       }
       break
     }
