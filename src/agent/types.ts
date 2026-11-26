@@ -154,8 +154,8 @@ export interface ChannelMessage {
   ask?: ChannelAsk
   /** work.send / chat.send 引用转发的用户消息 id */
   quoteMessageId?: string
-  /** 群聊里被 @ 的收件人（只抄送上下文，不激活；一条消息可点名多位） */
-  mentions?: ChannelPeer[]
+  /** 抄送对象：只同步上下文，不激活、不跑新一轮（一条消息可抄送多位） */
+  cc?: ChannelPeer[]
   /**
    * 本条消息唯一被激活的 mention。一条消息最多一个；只有它会在送达之外启动一轮。
    * 用户消息的首个 @ 由宿主解析成 mention，agent 侧显式传 `mention`。

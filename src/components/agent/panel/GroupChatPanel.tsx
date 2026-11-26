@@ -247,10 +247,14 @@ export function GroupChatPanel({
     resetFollowRef.current()
   }, [viewKey])
 
-  // 跟随状态下，新消息 / 内容长高就继续贴底；脱离之后一律不动
+  // 新消息无条件回到底部；仅内容变高（流式 / 渲染完成）时沿用 pinned 的缓动贴底。
+  const lastListCountRef = useRef(listMessages.length)
   useEffect(() => {
-    stickToBottom()
-  }, [stickToBottom, listMessages])
+    const grew = listMessages.length > lastListCountRef.current
+    lastListCountRef.current = listMessages.length
+    if (grew) restoreFollow()
+    else stickToBottom()
+  }, [listMessages, restoreFollow, stickToBottom])
 
   /**
    * 全局 @ 推送的深链：先保证那条消息在眼前这一层。
@@ -600,9 +604,9 @@ export function GroupChatPanel({
                 m.attachments?.images?.length || (m.attachments?.files ?? []).some((f) => isVideoFile(f)),
               )
               const bubbleVisible = Boolean(m.text.trim() || hasMedia || m.delivery || commentEntry)
-              const mentions = Array.from(
+              const ccNames = Array.from(
                 new Set([
-                  ...(m.mentions?.map((p) => agents.find((a) => a.id === p.id)?.name || p.name) ?? []),
+                  ...(m.cc?.map((p) => agents.find((a) => a.id === p.id)?.name || p.name) ?? []),
                   ...(m.mention ? [agents.find((a) => a.id === m.mention?.id)?.name || m.mention.name] : []),
                 ]),
               ).filter(Boolean)
@@ -676,7 +680,7 @@ export function GroupChatPanel({
                         {new Date(m.ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <span className="text-ink-faint/80">
-                        {mentions.length ? mentions.map((name) => '@' + name).join('、') : t('群聊')}
+                        {ccNames.length ? ccNames.map((name) => '@' + name).join('、') : t('群聊')}
                       </span>
                       {isThreadRoot ? (
                         <span className="rounded-full bg-seal/12 px-1.5 py-0.5 text-[9.5px] font-medium text-seal">

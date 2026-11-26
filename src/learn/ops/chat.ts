@@ -48,8 +48,8 @@ export interface ChatOpsDeps {
    */
   sendToGroup: (input: {
     text: string
-    /** 抄送上下文的目标（可多位，不激活） */
-    mentions?: string[]
+    /** 抄送上下文的目标（可多位，不激活、不跑新一轮） */
+    cc?: string[]
     /** 唯一要激活的 mention（只能一位） */
     mention?: string
     messageId?: string
@@ -143,9 +143,9 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
 
       if (channel === 'group') {
         if (!deps.goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
-        // to / mentions 里的目标都是 role；模型偶尔把群 peer 本身写进 to（group），
+        // to / cc 里的目标都是 role；模型偶尔把群 peer 本身写进 to（group），
         // 那表示“只回群里、不点名”，不能当成一个非法的 role id 去拒绝整条消息。
-        const targets = (input.mentions ?? [])
+        const targets = (input.cc ?? [])
           .map((item) => item.trim())
           .filter((item) => item && item !== GROUP_PEER_ID)
         const direct = input.to?.trim()
@@ -157,7 +157,7 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
         }
         const result = await deps.sendToGroup({
           text: body,
-          ...(targets.length ? { mentions: [...new Set(targets)] } : {}),
+          ...(targets.length ? { cc: [...new Set(targets)] } : {}),
           ...(activeMention ? { mention: activeMention } : {}),
           ...(messageId ? { messageId } : {}),
           ...(attachments ? { attachments } : {}),

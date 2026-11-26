@@ -23,7 +23,7 @@ const message = (id: string, from: ChannelMessage['from'], text: string): Channe
   to: { kind: 'group', id: 'group', name: '群聊' },
   text,
   ts: 1000,
-  mentions: [{ kind: 'role', id: 'tutor', name: '导师龟' }],
+  cc: [{ kind: 'role', id: 'tutor', name: '导师龟' }],
   goalId: 'g1',
 })
 

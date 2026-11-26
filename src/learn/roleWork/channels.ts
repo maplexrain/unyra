@@ -219,7 +219,7 @@ export function backfillUserEnvelopeAttachments(
   return changed ? next : channels
 }
 
-/** 群聊的固定对端：`to` 用它表示「这条消息进群」，收件人另看 mentions */
+/** 群聊的固定对端：`to` 用它表示「这条消息进群」，抄送名单另看 cc */
 export const GROUP_PEER_ID = 'group'
 
 export function groupPeer(): ChannelPeer {
@@ -244,7 +244,7 @@ export function outboundEnvelope(input: {
   attachments?: ChannelMessage['attachments']
   quoteMessageId?: string
   auto?: boolean
-  mentions?: ChannelPeer[]
+  cc?: ChannelPeer[]
   /** 唯一被激活的 mention */
   mention?: ChannelPeer
   /** 交付账（work 交付经 role 转发到通道） */
@@ -270,7 +270,7 @@ export function outboundEnvelope(input: {
     ...(input.ask ? { ask: input.ask } : {}),
     ...(input.quoteMessageId ? { quoteMessageId: input.quoteMessageId } : {}),
     ...(input.auto ? { auto: true } : {}),
-    ...(input.mentions?.length ? { mentions: input.mentions } : {}),
+    ...(input.cc?.length ? { cc: input.cc } : {}),
     ...(input.mention ? { mention: input.mention } : {}),
     ...(input.delivery ? { delivery: input.delivery } : {}),
     ...(input.goalId ? { goalId: input.goalId } : {}),
@@ -289,7 +289,7 @@ export function inboundEnvelope(input: {
   ts?: number
   id?: string
   attachments?: ChannelMessage['attachments']
-  mentions?: ChannelPeer[]
+  cc?: ChannelPeer[]
   /** 唯一被激活的 mention */
   mention?: ChannelPeer
   /** 交付账（work 交付经 role 转发到通道） */
@@ -313,7 +313,7 @@ export function inboundEnvelope(input: {
     ts: input.ts ?? Date.now(),
     ...(input.attachments ? { attachments: input.attachments } : {}),
     ...(input.extra ? { extra: input.extra } : {}),
-    ...(input.mentions?.length ? { mentions: input.mentions } : {}),
+    ...(input.cc?.length ? { cc: input.cc } : {}),
     ...(input.mention ? { mention: input.mention } : {}),
     ...(input.delivery ? { delivery: input.delivery } : {}),
     ...(input.auto ? { auto: true } : {}),

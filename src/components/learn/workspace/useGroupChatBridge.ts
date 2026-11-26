@@ -105,7 +105,7 @@ export function useGroupChatBridge({
     if (ensured.store !== getLatest()) set(ensured.store)
     const to = peerOf('agent', target.id, target.name)
     const activePeer = activate ? peerOf('agent', target.id, target.name) : undefined
-    const mentions = message.mentions ?? []
+    const cc = message.cc ?? []
     const inbound = inboundEnvelope({
       channel: 'group',
       from: message.from,
@@ -114,7 +114,7 @@ export function useGroupChatBridge({
       id: message.id,
       ts: message.ts,
       ...(message.attachments ? { attachments: message.attachments } : {}),
-      ...(mentions.length ? { mentions } : {}),
+      ...(cc.length ? { cc } : {}),
       ...(activePeer ? { mention: activePeer } : {}),
       goalId: targetGoalId,
       ...(message.threadId && message.threadRootId
@@ -218,7 +218,7 @@ export function useGroupChatBridge({
     if (!goalId) return false
     const from = userPeer()
     const now = Date.now()
-    const mentions = plan.explicitMentions
+    const cc = plan.explicitMentions
       ? plan.targets.map((id) => {
           const agent = agents.find((a) => a.id === id)!
           return peerOf('agent', id, agent.name)
@@ -236,7 +236,7 @@ export function useGroupChatBridge({
       text: plan.body,
       ts: now,
       ...(hasAttach && attachments ? { attachments } : {}),
-      ...(mentions.length ? { mentions } : {}),
+      ...(cc.length ? { cc } : {}),
       ...(plan.explicitMentions && activePeer ? { mention: activePeer } : {}),
       goalId,
       ...(plan.threadId && plan.threadRootId

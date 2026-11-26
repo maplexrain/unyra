@@ -105,7 +105,7 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
       const to = asText(a.to).trim()
       const messageId = asText(a.messageId).trim()
       const deliveryFrom = asText(a.deliveryFrom).trim()
-      const mentions = cleanMentions(a.mentions)
+      const cc = cleanMentions(a.cc)
       const mention = asText(a.mention).trim()
       const silent = a.silent === true
       if (channel !== 'user' && channel !== 'agent' && channel !== 'work' && channel !== 'group') {
@@ -123,7 +123,7 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
         channel,
         text,
         ...(to ? { to } : {}),
-        ...(mentions.length ? { mentions } : {}),
+        ...(cc.length ? { cc } : {}),
         ...(mention ? { mention } : {}),
         ...(messageId ? { messageId } : {}),
         ...(deliveryFrom ? { deliveryFrom } : {}),

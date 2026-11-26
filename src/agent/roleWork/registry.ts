@@ -7,7 +7,7 @@
  *   消息/状态/轮次保留），旧的委托会话（dv:）在会话层过滤，不进 works。
  */
 import type { AgentProfileId } from '../agentProfile'
-import type { ChannelAsk, ChannelMessage, Conversation, ConversationMessage, WorkSession, WorkStatus } from '../types'
+import type { ChannelAsk, ChannelMessage, ChannelPeer, Conversation, ConversationMessage, WorkSession, WorkStatus } from '../types'
 import { normalizeAskForm } from '../sandbox/askForm'
 import { normalizeDelivery } from '../delivery'
 import { splitChatText } from '../../lib/chatText'
@@ -80,6 +80,13 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
       m.mention && typeof m.mention === 'object' && typeof m.mention.id === 'string' && typeof m.mention.kind === 'string'
         ? m.mention
         : undefined
+    // 旧数据迁移：2026-11 之前群聊抄送字段叫 mentions；读到就并进 cc，之后只写 cc。
+    const legacyMentions = (m as { mentions?: unknown }).mentions
+    const cc: ChannelPeer[] = Array.isArray(m.cc) && m.cc.length
+      ? m.cc
+      : Array.isArray(legacyMentions)
+        ? (legacyMentions as ChannelPeer[])
+        : []
     out.push({
       id: m.id,
       kind: m.kind,
@@ -91,7 +98,7 @@ export function normalizeChannels(raw: unknown): ChannelMessage[] | undefined {
       ...(m.attachments ? { attachments: m.attachments } : {}),
       ...(ask ? { ask } : {}),
       ...(m.quoteMessageId ? { quoteMessageId: m.quoteMessageId } : {}),
-      ...(Array.isArray(m.mentions) && m.mentions.length ? { mentions: m.mentions } : {}),
+      ...(cc.length ? { cc } : {}),
       ...(mention ? { mention } : {}),
       ...(delivery ? { delivery } : {}),
       ...(typeof m.goalId === 'string' && m.goalId ? { goalId: m.goalId } : {}),

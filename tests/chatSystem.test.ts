@@ -26,7 +26,7 @@ describe('自由对话系统提示词 (buildFreeChatSystem)', () => {
     expect(prompt).toContain('api.work.status(name)')
     expect(prompt).toContain('api.work.kill(name)')
     expect(prompt).toContain('api.chat.send({ channel')
-    expect(prompt).toContain('to?, mentions?, mention?, text')
+    expect(prompt).toContain('to?, cc?, mention?, text')
   })
 
   it('支持附加自定义系统提示词', () => {

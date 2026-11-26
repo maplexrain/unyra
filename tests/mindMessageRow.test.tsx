@@ -133,7 +133,7 @@ describe('MindMessageRow', () => {
     expect(row?.getAttribute('data-mind-collapsible')).toBe('true')
     expect(row?.getAttribute('data-mind-expanded')).toBe('false')
     expect(row?.className).not.toContain('rounded-lg')
-    expect(row?.className).not.toContain('border')
+    expect(row?.className).toContain('border-l-2')
     expect(row?.querySelector('.max-h-\\[400px\\]')).not.toBeNull()
     expect(row?.querySelector('.flex-1')).not.toBeNull()
     const toggle = Array.from(row?.querySelectorAll('button') ?? []).find((b) =>
@@ -200,7 +200,6 @@ describe('MindMessageRow', () => {
     expect(host.querySelectorAll('[data-mind-message-id="m5"]')).toHaveLength(1)
     for (const row of units) {
       expect(row.className).not.toContain('rounded-lg')
-      expect(row.className).not.toContain('border')
     }
     expect(units[0].textContent).toContain('思考过程')
     expect(units[1].textContent).toContain('读资料')
@@ -249,11 +248,81 @@ describe('MindMessageRow', () => {
     const units = [...host.querySelectorAll<HTMLElement>('[data-mind-unit-id]')]
     expect(units).toHaveLength(2)
     expect(units.every((row) => row.getAttribute('data-work-message') === 'w1')).toBe(true)
-    expect(units.every((row) => row.className.includes('bg-amber-500/10'))).toBe(true)
+    expect(units.every((row) => !row.className.includes('bg-amber-500/10'))).toBe(true)
+    expect(units.every((row) => row.style.filter === 'brightness(0.8)')).toBe(true)
+    expect(units.every((row) => row.getAttribute('data-mind-unit-ts') === '1700000000000')).toBe(true)
+    expect(units.every((row) => /\d{2}:\d{2}/.test(row.textContent ?? ''))).toBe(true)
     expect(units[0].textContent).toContain('Work')
     expect(units[0].textContent).toContain('medium-tools-article')
     expect(units[1].querySelector('[data-mind-channel]')).toBeNull()
 
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('work 收发两个方向用不同左侧色条区分', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const inbound: ConversationMessage = {
+      id: 'win',
+      role: 'user',
+      ts: 1_700_000_000_000,
+      parts: [{ type: 'text', text: 'role 派给 work 的任务' }],
+      channel: {
+        channel: 'work',
+        from: { kind: 'role', id: 'tutor', name: '导师龟' },
+        to: { kind: 'work', id: 'w1', name: '调研-A' },
+        ts: 1_700_000_000_000,
+        envelopeId: 'e-in',
+      },
+    }
+    const outbound: ConversationMessage = {
+      id: 'wout',
+      role: 'assistant',
+      ts: 1_700_000_000_100,
+      parts: [{ type: 'text', text: 'work 交回 role 的交付' }],
+      channel: {
+        channel: 'work',
+        from: { kind: 'work', id: 'w1', name: '调研-A' },
+        to: { kind: 'role', id: 'tutor', name: '导师龟' },
+        ts: 1_700_000_000_100,
+        envelopeId: 'e-out',
+      },
+    }
+    act(() => {
+      root.render(
+        createElement(
+          'div',
+          null,
+          createElement(MindMessageRow, {
+            m: inbound,
+            agentName: '导师龟',
+            faded: false,
+            flash: false,
+            work: { id: 'w1', name: '调研-A' },
+            setBubblePreview: vi.fn(),
+          }),
+          createElement(MindMessageRow, {
+            m: outbound,
+            agentName: '导师龟',
+            faded: false,
+            flash: false,
+            setBubblePreview: vi.fn(),
+          }),
+        ),
+      )
+    })
+    const inRow = host.querySelector('[data-mind-message-id="win"]')
+    const outRow = host.querySelector('[data-mind-message-id="wout"]')
+    expect(inRow?.getAttribute('data-work-transfer')).toBe('work-in')
+    expect(inRow?.className).toContain('border-l-amber-500/70')
+    expect(outRow?.getAttribute('data-work-transfer')).toBe('work-out')
+    expect(outRow?.className).toContain('border-l-violet-500/70')
+    expect((inRow as HTMLElement | null)?.style.filter).toBe('brightness(0.8)')
+    expect((outRow as HTMLElement | null)?.style.filter).toBe('brightness(0.8)')
     act(() => {
       root.unmount()
     })

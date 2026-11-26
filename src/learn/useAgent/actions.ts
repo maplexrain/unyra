@@ -257,7 +257,7 @@ export function useAgentActions(deps: {
           to: groupPeer(),
           text: body,
           ts: now,
-          mentions: [rolePeer],
+          cc: [rolePeer],
           goalId: groupTarget.goalId,
           extra: { title: `工作流指令 · ${label}`, text: instruction },
         })
@@ -272,7 +272,7 @@ export function useAgentActions(deps: {
             text: body,
             ts: now,
             id: groupMessage.id,
-            mentions: [rolePeer],
+            cc: [rolePeer],
             goalId: groupTarget.goalId,
             extra: { title: `工作流指令 · ${label}`, text: instruction },
           })

@@ -66,7 +66,7 @@ describe('useGroupChatBridge', () => {
       (m) => m.goalId === 'g-bridge-test' && m.text === '@导师龟 帮我查一下',
     )
     expect(logged?.kind).toBe('group')
-    expect(logged?.mentions?.[0]?.id).toBe('tutor')
+    expect(logged?.cc?.[0]?.id).toBe('tutor')
     act(() => {
       root.unmount()
     })
@@ -95,7 +95,7 @@ describe('useGroupChatBridge', () => {
       to: { kind: 'group', id: 'group', name: '群聊' },
       text: '@导师龟 帮我讲一下',
       ts: 1000,
-      mentions: [{ kind: 'role', id: 'tutor', name: '导师龟' }],
+      cc: [{ kind: 'role', id: 'tutor', name: '导师龟' }],
       goalId,
       threadId: groupThreadIdOf(goalId, 'g-root'),
     }
@@ -266,7 +266,7 @@ describe('useGroupChatBridge', () => {
     expect(started).toHaveLength(1)
     expect(started[0]!.role).toBe('tutor')
     const logged = getGroupChatMessages().find((m) => m.goalId === 'g-bridge-multi')
-    expect(logged?.mentions?.map((p) => p.id).sort()).toEqual(['designer', 'tutor'])
+    expect(logged?.cc?.map((p) => p.id).sort()).toEqual(['designer', 'tutor'])
     expect(logged?.mention).toMatchObject({ kind: 'role', id: 'tutor' })
     act(() => {
       root.unmount()
@@ -323,8 +323,8 @@ describe('useGroupChatBridge', () => {
     expect(started[0]!.text).toBe('帮我把这周的安排列一下')
     expect(started[0]!.stamp.mention).toBe(true)
     const logged = getGroupChatMessages().find((m) => m.goalId === 'g-bridge-noat')
-    expect(logged?.mentions ?? []).toEqual([])
-    // 用户正文没有点名，不伪造 mentions / mention；选中目标只存在于投递内部。
+    expect(logged?.cc ?? []).toEqual([])
+    // 用户正文没有点名，不伪造 cc / mention；选中目标只存在于投递内部。
     expect(logged?.mention).toBeUndefined()
     act(() => {
       root.unmount()

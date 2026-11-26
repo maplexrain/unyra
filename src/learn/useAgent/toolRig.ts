@@ -279,7 +279,7 @@ export function rigTurnTools(io: {
       })
       return { ok: r.ok, channel: 'work', to: name, ...(r.error ? { error: r.error } : {}) }
     },
-    sendToGroup: async ({ text, mentions, mention, messageId, attachments, extra, delivery, silent }) => {
+    sendToGroup: async ({ text, cc, mention, messageId, attachments, extra, delivery, silent }) => {
       const goalId = target.goalId
       if (!goalId) return { ok: false, error: '当前 role 会话不挂在目标上，无法进入群聊' }
       const mentionRoles: MentionRole[] = AGENT_ROLE_IDS.filter((id) => id !== 'free').map((id) => ({
@@ -287,7 +287,7 @@ export function rigTurnTools(io: {
         names: [roleNameOf(id), DEFAULT_AGENT_NAME[id]],
       }))
       /*
-       * 正文里的 `@名字` 是群聊投递的唯一真源：模型传的 mentions 只作补充。
+       * 正文里的 `@名字` 是群聊投递的唯一真源：模型传的 cc 只作补充。
        * 所有 @ 都只是「把这句话抄进对方上下文」，不激活任何 loop。
        * 唯一会起轮的是 `mention`（一条消息最多一个）。
        */
@@ -297,8 +297,8 @@ export function rigTurnTools(io: {
       if (selfMentionError) return { ok: false, error: selfMentionError }
       let ids: AgentProfileId[] = textIds
       if (!ids.length) {
-        const rawIds = [...new Set((mentions ?? []).map((id) => id.trim()).filter(Boolean))]
-        // 正文只 @用户：这是给用户看的结论，即使模型误填了 to / mentions 也不投递给任何 role。
+        const rawIds = [...new Set((cc ?? []).map((id) => id.trim()).filter(Boolean))]
+        // 正文只 @用户：这是给用户看的结论，即使模型误填了 to / cc 也不投递给任何 role。
         if (!(mentionsUser && !textIds.length)) {
           if (rawIds.length) {
             ids = rawIds
@@ -376,7 +376,7 @@ export function rigTurnTools(io: {
         text,
         ...(messageId ? { quoteMessageId: messageId } : {}),
         ...(attachments ? { attachments } : {}),
-        ...(mentionPeers.length ? { mentions: mentionPeers } : {}),
+        ...(mentionPeers.length ? { cc: mentionPeers } : {}),
         ...(activePeer ? { mention: activePeer } : {}),
         ...(delivery ? { delivery } : {}),
         ...(extra ? { extra } : {}),
@@ -402,7 +402,7 @@ export function rigTurnTools(io: {
           ...(attachments ? { attachments } : {}),
           ...(extra ? { extra } : {}),
           ...(delivery ? { delivery } : {}),
-          mentions: mentionPeers,
+          cc: mentionPeers,
           ...(activePeer && activePeer.id === id ? { mention: activePeer } : {}),
           goalId,
           ...(threadId ? { threadId } : {}),
@@ -642,7 +642,7 @@ export function rigTurnTools(io: {
               files: 0,
               sources: 0,
               error:
-                '至少要给 files 或 sources 里的一项：files: [{ path, action?: created|updated|deleted, note? }]，sources: [{ title, url }]（只收 http/https）',
+                '至少要给 files 或 sources 里的一项（文档类任务必须 files + sources 都有）：files: [{ path, action?: created|updated|deleted, note? }]，sources: [{ title, url }]（只收 http/https）',
             }
           }
           if (target.goalId) {

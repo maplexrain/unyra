@@ -70,6 +70,20 @@ function isExternal(m: ConversationMessage, work?: MindWorkMessageMeta): boolean
   return Boolean(work) || Boolean(m.channel && m.channel.from.kind !== 'user')
 }
 
+/**
+ * work 通道里的收发方向。role 派给 work 的任务与 work 回给 role 的交付
+ * 必须一眼分开：前者是「收到」，后者是「发出」。
+ */
+type WorkTransfer = 'work-in' | 'work-out'
+
+function workTransferOf(m: ConversationMessage): WorkTransfer | null {
+  const from = m.channel?.from.kind
+  const to = m.channel?.to.kind
+  if (from === 'role' && to === 'work') return 'work-in'
+  if (from === 'work' && to === 'role') return 'work-out'
+  return null
+}
+
 /** 一条消息拆出来的最小展示单位；`null` 用于只有附件 / 交付、没有 part 的消息 */
 type MindUnit = PartItem | null
 
@@ -108,7 +122,7 @@ function MindUnitHeader({
           {meta}
         </span>
       )}
-      <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+      <div className="mb-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
         <span
           data-mind-channel={channelKey}
           className={
@@ -196,6 +210,24 @@ function MindUnitRow({
   const last = index === count - 1
   const part = partOf(item)
   const channelKey = channelKeyOf(m, work)
+  const transfer = workTransferOf(m)
+  const isUser = m.role === 'user' || m.channel?.from.kind === 'user'
+  const isBody = part?.type === 'text' || part?.type === 'notice' || item?.type === 'inject'
+  /**
+   * 左侧色条：
+   * - work 收 / 发两个方向各一种颜色，避免同一条时间线里混淆；
+   * - 用户消息与正文另给一条较淡的边，让「谁在说话」先于内容被看见；
+   * - 工具行不叠边框，它已经有自己的折叠壳。
+   */
+  const edgeClass = transfer
+    ? transfer === 'work-in'
+      ? 'border-l-[3px] border-l-amber-500/70 '
+      : 'border-l-[3px] border-l-violet-500/70 '
+    : isUser
+      ? 'border-l-2 border-l-sky-500/40 '
+      : isBody
+        ? 'border-l-2 border-l-seal/35 '
+        : ''
   const meta = first && m.channel ? channelMetaLineOf(m.channel) : ''
   const usage = first ? m.usage : undefined
   const ratio = usage ? contextRatio(usage) : null
@@ -233,17 +265,21 @@ function MindUnitRow({
       data-mind-unit-id={`${m.id}:${index}`}
       data-mind-message-id={first ? m.id : undefined}
       data-mind-ts={m.ts}
+      data-mind-unit-ts={m.ts}
       data-mind-part-type={item?.type ?? 'empty'}
       data-work-message={work ? work.id : undefined}
+      data-work-transfer={transfer ?? undefined}
       data-mind-collapsible={collapseText ? 'true' : undefined}
       data-mind-expanded={collapseText ? (expanded ? 'true' : 'false') : undefined}
+      style={channelKey === 'work' ? { filter: 'brightness(0.8)' } : undefined}
       className={
-        'my-1 px-2.5 py-2 ' +
-        (work ? 'bg-amber-500/10 ' : 'bg-card/55 ') +
+        'my-0.5 px-2.5 py-1.5 ' +
+        edgeClass +
+        (channelKey === 'work' ? '' : 'bg-card/55 ') +
         (body.faded ? 'opacity-55 ' : '')
       }
     >
-      {first && (
+      {first ? (
         <MindUnitHeader
           m={m}
           agentName={agentName}
@@ -254,7 +290,9 @@ function MindUnitRow({
           ratio={ratio}
           hideTime={hideTime}
         />
-      )}
+      ) : !hideTime ? (
+        <div className="mb-0.5 text-[10px] tabular-nums text-ink-faint">{timeOf(m.ts)}</div>
+      ) : null}
       <div
         ref={measureRef}
         className={collapseText && !expanded ? 'max-h-[400px] overflow-hidden' : ''}

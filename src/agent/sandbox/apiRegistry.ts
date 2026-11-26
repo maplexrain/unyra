@@ -330,12 +330,13 @@ list() 回执的 rel 字段是**真实磁盘路径**：process.* 的 cwd 等需�
     '交付登记',
     '把这一轮的文件变动与参考引证登记到消息底部（一行一条，溢出省略）。',
     `只在**确实交付了东西**时调：写完或改完文档、讲义、大纲、试卷、工作区文件之后登记一次。
+**文档类任务必须同时登记 \`files\` + \`sources\`**：文件逐条进 \`files\`，正文引用逐条进 \`sources\`（title + http(s) URL）；只登文件、不登来源视为未交付。
 没有交付物就不要调——空记录不显示，乱登记只会给用户添噪音。
-同一轮分几次登记会合并去重（路径 / URL 各自唯一）。
+同一份账分几次登记会合并去重（路径 / URL 各自唯一）：role 按当前一轮，work 按该 work 会话累计；回执与后续转发拿到的都是整份累计快照。
 这是给**界面**看的账，不是给正文复述用的：正文里不必再抄一遍文件清单与参考来源。`,
     [
       a('submit', 'delivery.submit({ files?, sources? })', '登记本轮交付',
-        'files: [{ path, action?: created|updated|deleted, note? }]；sources: [{ title, url }]（只收 http/https）。**path 要写数据树里的节点路径原样**（如「微积分/极限」，不要自己拼 /教学、/讲义 之类后缀），或工作区文件的相对路径（带扩展名）——界面点它时按这两种形态分别打开文档与文件。回 { ok, files, sources, error? }。',
+        'files: [{ path, action?: created|updated|deleted, note? }]；sources: [{ title, url }]（只收 http/https）。**文档类任务两个字段都必须有**：files 逐条登记文件，sources 按正文引用逐条登记，只登文件视为未交付。**path 要写数据树里的节点路径原样**（如「微积分/极限」，不要自己拼 /教学、/讲义 之类后缀），或工作区文件的相对路径（带扩展名）——界面点它时按这两种形态分别打开文档与文件。返回 { ok, files, sources, error? }；work 账按会话累计，返回整份快照。',
         `await api.delivery.submit({ files: [{ path: '微积分/极限', action: 'updated', note: '补了夹逼定理一节' }], sources: [{ title: '同济高等数学第七版', url: 'https://example.com/book' }] })`, { trap: '没有交付物就不要调；path 写数据树节点路径原样（如「微积分/极限」）或带扩展名的工作区相对路径' }),
     ],
   ),
@@ -593,21 +594,26 @@ status 只回执行轨迹的 execute 标题，不回工具参数与正文；要�
   g(
     'chat',
     '通道对话',
-    'role 专属：chat.send 把对话发到用户 / Agent / Work / 群聊通道，可带附件；group 的 @ 只抄送上下文，mention 才是唯一激活开关。',
+    'role 专属：chat.send 把对话发到用户 / Agent / Work / 群聊通道，可带附件；group 的 @ 只抄送上下文，mention 才是唯一激活开关，cc 是抄送名单。',
     `role 的所有外部消息都经通道：user（用户私聊）、agent（其他 role 私聊）、group（群聊）、work（自己的 work）。
 每条入站消息由宿主标注来源与时间戳；chat.send 的 text 是**对外说的话**，不是思维过程。
 **简短 / 详细同段**：交付物完成通知可在 text 里用单独一行 \`---\` 分隔：前面一句话口语化完成通知，后面写具体改动、索引名 / 标识符、专业术语与核验过程。聊天界面默认只显示分隔线前，用户可展开详细。只有用户目的是拿到额外交付物时才用；普通问答、寒暄、进度同步不要用；发给 work 时完整正文一起交给 work。
 **回复必须从最近一条入站消息的 channel 回去**：user 回 user；agent 回 agent（to=目标 role id）；group 回 group。
 群聊里 **@ 不再激活任何 agent**：正文里可以 @ 多位（只 @ 本次确实参与过的人，不要广播），@ 只把消息抄进被 @ 者的上下文。
-**要激活某位 role，必须传唯一的 \`mention: "<role id>"\`**，而且目标必须同时被正文 \`@名字 \` 点到；一条消息只能有一个 mention，被 mention 的 agent 会启动一轮。
-用户消息的首个 @ 由宿主自动解析成 mention；agent 发群消息时不要指望 @ 本身能叫醒谁。旧 \`to\` 在 group 里兼容为 mention，新代码请显式写 mention。
+**汇报与抄送必须分开**：完成任务先**直接向用户汇报**（群聊正文 \`@用户 \`，私聊走 user 通道），不经过委派方 role 转达；同一结论再抄送委派方对齐上下文。抄送只让对方看见，不激活、不跑新一轮。
+**群聊三种写法**：
+1. **只汇报用户**：正文 \`@用户 \`，不填 \`to\` / \`cc\` / \`mention\` → 一级主楼。
+2. **汇报 + 抄送委派方**：正文同时 \`@用户 \` 与 \`@委派方 \`，填 \`cc:["委派方roleId"]\`，**不填 \`mention\`** → @用户 决定落一级主楼，委派方只同步上下文。
+3. **纯抄送（不面向用户）**：正文 \`@委派方 \`，填 \`cc:["委派方roleId"]\`，不写 \`@用户\`、不填 \`mention\` → 跟随当前有效评论串，没有则一级主楼。
+**要激活某位 role，必须传唯一的 \`mention: "<role id>"\`**，而且目标必须同时被正文 \`@名字 \` 点到；一条消息只能有一个 mention，被 mention 的 agent 会启动一轮。带 mention 的派活开新任务串或续当前任务串；楼层没有显式字段，由 @用户 / mention / 当前串自动路由。用户消息的首个 @ 由宿主自动解析成 mention；agent 发群消息时不要指望 @ 本身能叫醒谁。旧 \`to\` 在 group 里兼容为 mention，新代码请显式写 mention。
 chat.send 到 work 通道等价于 work.send；到 user 通道不写 to。
-**silent:true 用于进度汇报**：只允许 agent / group 通道，且必须有明确目标 role；消息会落进对方的通道流水与上下文，但**不启动对方一轮**，适合「我已经直接对接用户，只需让经理龟知道进度」的截断点。普通回复不要静默，否则对方不会回应；silent 不能与 mention 同用。
-**deliveryFrom**：传一条消息 id，把那条消息上的结构化交付账（影响内容 + 引用来源）随本条消息转发；Work 交付消息的 id 在来源元信息里，role 转给群聊/私聊时用它，不要自己重抄 files / sources。
+**私聊来源的汇报 + 抄送（仅当任务由其他 role 委派）**：先 user 通道汇报用户；同一结论另发 agent 通道 \`to="委派方roleId"\` + \`silent:true\` 抄送（不写 @用户、不填 mention），不要让委派方替你转达。
+**silent:true 用于进度汇报**：只允许 agent / group 通道，且必须有明确目标 role；消息会落进对方的通道流水与上下文，但**不启动对方一轮**。普通回复不要静默，否则对方不会回应；silent 不能与 mention 同用。
+**deliveryFrom**：传一条消息 id，把那条消息上**此刻的整份结构化交付账快照**（files + sources）随本条消息转发；不是增量，也不与当前账合并。work 账按该 work 会话累计，role 账按当前一轮；Work 交付消息的 id 在来源元信息里，role 转给群聊/私聊时用它，不要自己重抄 files / sources。
 chat.send 成功会回 \`{ ok:true, channel, id, to?, mention? }\`；看到 ok:true 后**禁止重复发送同一条消息**，失败才按 error 修正。
 大段结果（调研原文、日志、JSON）放 \`extra:{title,text}\`，不要塞进正文刷屏；用户可点开查看。`,
     [
-      a('send', 'api.chat.send({ channel, to?, mentions?, mention?, text, messageId?, deliveryFrom?, attachments?, extra?, silent? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 里 to 兼容为唯一 mention，mentions 是抄送名单（可多位，正文必须逐个写 \`@名字 \`，名字后留一个空格）；真正激活某位 role 用 mention="role id"（只能一个，且正文必须 @ 同一个名字）；**正文只 @用户、不指定 to / mentions / mention 时不投递给任何 role，用于把最终结论直接汇报给用户**；silent:true 只允许 agent / group，只入上下文、不激活目标，不能带 mention；text 是唯一正文，交付物完成通知可用单独一行 `---` 分隔：前面一句话口语化完成通知，后面放具体改动 / 索引名 / 标识符 / 专业细节，界面默认只显示短句、用户可展开；普通对话不要用该分隔；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（通道抬头 id: 后面的信封 id 也算）；deliveryFrom 按消息 id 转发一条 Work / 通道消息的交付账。extra={title?,text,format?} 放正文之外的日志 / 原始结果 / 长 JSON，界面折叠展示。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role，mention 是实际激活的目标。', `await api.chat.send({ channel: "group", mention: "researcher", text: "@调研龟 三条来源已经核过。\\n---\\n1. 官网原文支持……\\n2. 第二条来源与官方口径冲突……\\n3. 引用位置：……", extra: { title: "待查来源", text: sourceList } })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道。@ 只是抄送、不会启动对方，要激活必须带唯一 mention。silent 不是「不发送」：它只入上下文、不激活目标，普通回复别用。`---` 只用于交付物完成通知，不要把普通回答的结论藏进详细段。' }),
+      a('send', 'api.chat.send({ channel, to?, cc?, mention?, text, messageId?, deliveryFrom?, attachments?, extra?, silent? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 里 to 兼容为唯一 mention；cc 是抄送名单（string[]，可多位，正文必须逐个写 \`@名字 \`，不激活、不跑新一轮）；真正激活某位 role 只用唯一 mention="role id"（只能一个，且正文必须 @ 同一个名字）。**群聊三态**：①只汇报用户=正文 \`@用户 \`，不填 to/cc/mention，落一级主楼；②汇报+抄送委派方=正文 @用户 与 @委派方、填 cc、不填 mention，落一级主楼，委派方只入上下文；③纯抄送=正文 @委派方、填 cc，不写 @用户、不填 mention，跟随当前有效评论串，无串则一级主楼。silent:true 只允许 agent / group，只入上下文、不激活目标，不能带 mention；私聊来源先 user 通道汇报用户，再 agent 通道 to="委派方roleId" + silent:true 抄送；text 是唯一正文，交付物完成通知可用单独一行 `---` 分隔：前面一句话口语化完成通知，后面放具体改动 / 索引名 / 标识符 / 专业细节，界面默认只显示短句、用户可展开；普通对话不要用该分隔；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（通道抬头 id: 后面的信封 id 也算）；deliveryFrom 按消息 id 转发来源消息上**整份交付账快照**（files + sources，不是增量）：work 账按 work 会话累计，role 账按当前一轮。extra={title?,text,format?} 放正文之外的日志 / 原始结果 / 长 JSON，界面折叠展示。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role，mention 是实际激活的目标。', `await api.chat.send({ channel: "group", mention: "researcher", text: "@调研龟 三条来源已经核过。\\n---\\n1. 官网原文支持……\\n2. 第二条来源与官方口径冲突……\\n3. 引用位置：……", extra: { title: "待查来源", text: sourceList } })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道。@ / cc 只是抄送、不会启动对方，要激活必须带唯一 mention。silent 不是「不发送」：它只入上下文、不激活目标，普通回复别用。`---` 只用于交付物完成通知，不要把普通回答的结论藏进详细段。' }),
     ],
   ),
 
