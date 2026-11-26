@@ -2,9 +2,8 @@
  * work 的系统提示词：没有人格，只有执行基座 + 本 role 的领域能力 + 具体做法 + 交付纪律。
  * 每次运行由 promptFiles 按当前提示词文件顺序重新装配，不在创建时固化。
  */
-import { EXECUTE_BASE_GUIDE, APP_DATA_GUIDE, SANDBOX_DISCIPLINE_GUIDE } from './executeGuide'
-import { SHARED_DISCIPLINE } from './agentSharedPrefix'
-import { WORK_COMMON_PREFIX, HOST_SEND_GUIDE, WORK_ROLE_BRIEF } from './workGuide'
+import { WORK_BASE_GUIDE } from './workBase'
+import { WORK_ROLE_BRIEF } from './workGuide'
 import { SHARED_TYPOGRAPHY_GUIDE } from './typographyGuide'
 import { workApiPromptPartsFor } from './apiPromptSections'
 import { voiceCopyOf } from './voiceCopy'
@@ -67,16 +66,7 @@ export function workSystemSections(role: AgentProfileId): WorkSystemSections {
     .filter(Boolean)
     .join('\n\n')
   return {
-    base: [
-      promptBlock('work_identity', WORK_COMMON_PREFIX),
-      promptBlock('execution_rules', EXECUTE_BASE_GUIDE),
-      promptBlock('app_data_rules', APP_DATA_GUIDE),
-      promptBlock('sandbox_rules', SANDBOX_DISCIPLINE_GUIDE),
-      promptBlock('general_discipline', SHARED_DISCIPLINE),
-      promptBlock('delivery_rules', HOST_SEND_GUIDE),
-    ]
-      .filter(Boolean)
-      .join('\n\n'),
+    base: WORK_BASE_GUIDE,
     roleBrief: promptBlock('work_role', WORK_ROLE_BRIEF[role]),
     typography: promptBlock('content_layout', typography),
     fixedApi: promptBlock('tool_capabilities', api.fixed),

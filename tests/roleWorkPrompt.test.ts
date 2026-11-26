@@ -42,10 +42,10 @@ describe('role / work 对外一体与汇报纪律', () => {
 
   it('work 主动用 ask，并知道调研缺口要交回 role', () => {
     const text = buildWorkSystem('tutor')
-    expect(text).toContain('需要用户拍板就主动用 `api.ask`')
+    expect(text).toContain('决策确认（`api.ask`）')
     expect(text).toContain('联网检索')
     expect(text).toContain('【需要转交】')
-    expect(text).toContain('role 会转给对应 role')
+    expect(text).toContain('建议哪个 role')
   })
 
   it('role 看得到 work 的能力面，但明确自己调不到、只能委派', () => {

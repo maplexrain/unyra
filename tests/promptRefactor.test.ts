@@ -11,7 +11,7 @@ import { buildFreeChatSystem } from '../src/learn/ai/chatSystem'
 import { buildWorkSystem } from '../src/learn/ai/workSystem'
 import { FREE_CHAT_BOUNDARY } from '../src/learn/ai/freeChatCopy'
 import { ROLE_CHANNEL_GUIDE, ROLE_WORK_GUIDE } from '../src/learn/ai/roleWorkGuide'
-import { HOST_SEND_GUIDE, WORK_COMMON_PREFIX } from '../src/learn/ai/workGuide'
+import { WORK_BASE_GUIDE } from '../src/learn/ai/workBase'
 import { FIXED_API_PLANE } from '../src/agent/agentProfile'
 import { renderSplitApiDocumentation } from '../src/agent/sandbox/apiPromptDoc'
 
@@ -79,8 +79,8 @@ describe('work 交付无兜底话术', () => {
   }
 
   it('work 基座与交付段不再重复抄工具签名', () => {
-    expect(WORK_COMMON_PREFIX).not.toContain('api.host.send({')
-    expect(HOST_SEND_GUIDE).not.toContain('api.delivery.submit({')
+    expect(WORK_BASE_GUIDE).not.toContain('api.host.send({')
+    expect(WORK_BASE_GUIDE).not.toContain('api.delivery.submit({')
   })
 })
 
@@ -97,8 +97,9 @@ describe('work 提示词语义分区', () => {
     it(role + ' work 按基座 / 角色 / 工具 / 流程 / 纪律分区', () => {
       const text = buildWorkSystem(role)
       for (const tag of [
-        'work_identity',
+        'role',
         'execution_rules',
+        'sandbox_and_tools',
         'delivery_rules',
         'work_role',
         'tool_capabilities',

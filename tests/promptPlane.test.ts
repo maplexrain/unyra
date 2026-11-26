@@ -74,7 +74,7 @@ describe('work 层：领域能力、语法与规程都在这里', () => {
   for (const role of ['tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer'] as AgentProfileId[]) {
     it(role + ': work 提示词带本 role 的领域面', () => {
       const text = buildWorkSystem(role)
-      expect(text).toContain('你是 role 派出的**工作会话（work）**')
+      expect(text).toContain('你是 role 派出的内部工作会话（work）')
       expect(text).toContain('api.host.send')
       // tutor work 要有 node / workspace；examiner work 要有 exam；designer 要有 classroom
       if (role === 'tutor') {

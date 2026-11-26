@@ -123,7 +123,7 @@ describe('模块消息', () => {
 describe('work 系统提示词（紧凑静态注入；role 不再背执行细节）', () => {
   const system = buildWorkSystem('tutor')
 
-  it('沙箱 API 速查由注册表生成：签名 + 用法边界在场，全量手册的旧标题不在', () => {
+  it('沙箱 API 速查由注册表生成：签名 + 一句话作用在场，全量手册的旧标题不在', () => {
     // 导师 work 的领域面：节点 / 日程 / 工作区都在
     expect(system).toContain('api.node — 节点宇宙')
     expect(system).toContain('api.schedule')
@@ -135,7 +135,7 @@ describe('work 系统提示词（紧凑静态注入；role 不再背执行细节
     expect(system).not.toContain('#### api.exam')
     expect(system).not.toContain('#### api.classroom')
     expect(system).not.toContain('#### api.browser')
-    // 具体签名与反直觉边界（trap）在场
+    // 具体签名在场（完整用法边界与 trap 走 __help，不首屏铺开）
     expect(system).toContain('node.list()')
     expect(system).toContain('node.get(uuid)')
     expect(system).toContain('workspace.write')
@@ -183,8 +183,8 @@ describe('work 系统提示词（紧凑静态注入；role 不再背执行细节
   it('每轮必用的核心纪律与原则完整在场', () => {
     expect(system).toContain('execute')
     expect(system).toContain('rexecute')
-    expect(system).toContain('写操作的失败不抛异常')
-    expect(system).toContain('应用数据一律走 api 组')
+    expect(system).toContain('写操作失败不抛异常')
+    expect(system).toContain('应用数据一律走速查列出的 api 组')
     expect(system).toContain('userInfo.get()')
     expect(system).toContain('按名直接调用')
     expect(system).toContain('需求解耦')
