@@ -31,6 +31,7 @@ import { ROLE_CHANNEL_GUIDE, ROLE_WORK_GUIDE } from './roleWorkGuide'
 import { TURTLE_CLAN_GUIDE } from './turtleClan'
 import { voiceCopyOf } from './voiceCopy'
 import { compactWorkflowSection } from './workflowsGuide'
+import { promptBlock } from './promptFrames'
 import type { AgentProfileId } from '../../agent/agentProfile'
 
 /** 提示词分段颜色主题 */
@@ -99,6 +100,11 @@ interface BuildSectionsOpts {
 /** 分段收尾：用户附加自定义系统提示词（启用时才出现） */
 function extraSection(id: string, opts: BuildSectionsOpts): PromptSection[] {
   if (!opts.extraSystemPrompt?.trim()) return []
+  // 用户附加内容永远在最后，单独一块，避免污染前面的静态缓存前缀。
+  const content = [
+    '【用户附加自定义系统提示词（具有高优先级效力）】：',
+    opts.extraSystemPrompt.trim(),
+  ].join('\n')
   return [
     {
       id,
@@ -106,10 +112,7 @@ function extraSection(id: string, opts: BuildSectionsOpts): PromptSection[] {
       title: '用户附加自定义系统提示词',
       badge: '附加提示',
       color: 'slate',
-      content: [
-        '【用户附加自定义系统提示词（具有高优先级效力）】：',
-        opts.extraSystemPrompt.trim(),
-      ].join('\n'),
+      content: promptBlock('user_extra', content),
     },
   ]
 }
@@ -135,7 +138,7 @@ function fixedApiSection(voice: AgentVoice, content: string): PromptSection {
     badge: '固定组',
     color: 'blue',
     isCommon: true,
-    content,
+    content: promptBlock('tool_capabilities', content),
   }
 }
 
@@ -149,7 +152,7 @@ function voiceCopySections(voice: AgentVoice): PromptSection[] {
       title: 'role 角色定位',
       badge: '身份定位',
       color: 'rose',
-      content: [TURTLE_CLAN_GUIDE, '', ...copy.role].join('\n'),
+      content: promptBlock('identity', [TURTLE_CLAN_GUIDE, '', ...copy.role].join('\n')),
     },
     {
       id: `${voice}-duty`,
@@ -157,7 +160,7 @@ function voiceCopySections(voice: AgentVoice): PromptSection[] {
       title: '你的专属分工',
       badge: '分工协调',
       color: 'amber',
-      content: copy.duty.join('\n'),
+      content: promptBlock('duties', copy.duty.join('\n')),
     },
   ]
 }
@@ -192,7 +195,7 @@ function getFreeChatSections(opts: BuildSectionsOpts = {}): PromptSection[] {
       title: '自由对话定位与页签说明',
       badge: '身份定位',
       color: 'rose',
-      content: FREE_CHAT_IDENTITY,
+      content: promptBlock('identity', FREE_CHAT_IDENTITY),
     },
     {
       id: 'free-boundary',
@@ -200,7 +203,7 @@ function getFreeChatSections(opts: BuildSectionsOpts = {}): PromptSection[] {
       title: '核心边界与任务终止铁律（绝对红线）',
       badge: '安全红线',
       color: 'rose',
-      content: FREE_CHAT_BOUNDARY,
+      content: promptBlock('boundaries', FREE_CHAT_BOUNDARY),
     },
     ...extraSection('free-extra', opts),
   ])
@@ -227,7 +230,7 @@ function getVoiceSections(voice: AgentVoice, opts: BuildSectionsOpts = {}): Prom
       title: 'work 能力面（只能委派）',
       badge: '委派边界',
       color: 'amber',
-      content: workDelegationSectionFor(voice),
+      content: promptBlock('delegated_capabilities', workDelegationSectionFor(voice)),
     },
     ...extraSection(`${voice}-extra`, opts),
   ])

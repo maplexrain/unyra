@@ -10,6 +10,7 @@ import { workApiPromptPartsFor } from './apiPromptSections'
 import { voiceCopyOf } from './voiceCopy'
 import { compactWorkflowSection, workflowGuideFor } from './workflowsGuide'
 import { FREE_CHAT_SEARCH_SECTION } from './freeChatCopy'
+import { promptBlock } from './promptFrames'
 import { AGENT_WORKFLOW_PLANES, type AgentProfileId } from '../../agent/agentProfile'
 
 const CONTENT_ROLES: readonly AgentProfileId[] = ['tutor', 'examiner', 'designer']
@@ -67,25 +68,22 @@ export function workSystemSections(role: AgentProfileId): WorkSystemSections {
     .join('\n\n')
   return {
     base: [
-      WORK_COMMON_PREFIX,
-      '',
-      EXECUTE_BASE_GUIDE,
-      '',
-      APP_DATA_GUIDE,
-      '',
-      SANDBOX_DISCIPLINE_GUIDE,
-      '',
-      SHARED_DISCIPLINE,
-      '',
-      HOST_SEND_GUIDE,
-    ].join('\n'),
-    roleBrief: WORK_ROLE_BRIEF[role],
-    typography,
-    fixedApi: api.fixed,
-    variableApi: api.variable,
-    syntax: copy?.syntax.join('\n\n') ?? '',
-    workflow,
-    discipline: copy?.discipline.join('\n') ?? '',
+      promptBlock('work_identity', WORK_COMMON_PREFIX),
+      promptBlock('execution_rules', EXECUTE_BASE_GUIDE),
+      promptBlock('app_data_rules', APP_DATA_GUIDE),
+      promptBlock('sandbox_rules', SANDBOX_DISCIPLINE_GUIDE),
+      promptBlock('general_discipline', SHARED_DISCIPLINE),
+      promptBlock('delivery_rules', HOST_SEND_GUIDE),
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
+    roleBrief: promptBlock('work_role', WORK_ROLE_BRIEF[role]),
+    typography: promptBlock('content_layout', typography),
+    fixedApi: promptBlock('tool_capabilities', api.fixed),
+    variableApi: promptBlock('tool_capabilities', api.variable),
+    syntax: promptBlock('content_syntax', copy?.syntax.join('\n\n') ?? ''),
+    workflow: promptBlock('workflow_procedures', workflow),
+    discipline: promptBlock('work_discipline', copy?.discipline.join('\n') ?? ''),
   }
 }
 

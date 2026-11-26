@@ -16,7 +16,7 @@ describe('自由对话系统提示词 (buildFreeChatSystem)', () => {
     expect(prompt).toContain('生成知识图谱')
     expect(prompt).toContain('出卷判卷')
     expect(prompt).toContain('api.work.create / api.work.send')
-    expect(prompt).toContain("api.chat.send({ channel: 'user', text })")
+    expect(prompt).toContain('api.chat.send')
     expect(prompt).not.toContain('任何任务指令在此页签均视为非法越界')
   })
 
@@ -25,7 +25,8 @@ describe('自由对话系统提示词 (buildFreeChatSystem)', () => {
     expect(prompt).toContain('api.work.list()')
     expect(prompt).toContain('api.work.status(name)')
     expect(prompt).toContain('api.work.kill(name)')
-    expect(prompt).toContain('api.chat.send({ channel, to?, text')
+    expect(prompt).toContain('api.chat.send({ channel')
+    expect(prompt).toContain('to?, mentions?, mention?, text')
   })
 
   it('支持附加自定义系统提示词', () => {

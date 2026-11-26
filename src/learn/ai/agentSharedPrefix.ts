@@ -6,14 +6,13 @@
  * role 协作（work / chat 全员都有）、execute 机制、先查再用、应用数据守门、沙箱纪律、
  * 通用纪律、compact 规程（compact 六位 role 都有）。
  *
- * api 速查**不塞进 P0**，而是紧随 P0 拆成两段（内容 role 在 P0 与 api 之间还先接一段共用
- * 排版与视觉规范，见 typographyGuide）：
- * - **固定组**（help / wait / compact + tmp / work / chat）是六位 role 的交集，逐字节一致，
+ * api 速查**不塞进 P0**，而是紧随 P0 拆成两段：
+ * - **固定组**（help / compact + tmp / work / chat）是六位 role 的交集，逐字节一致，
  *   跨 role 缓存前缀能从 P0 一路命中到固定组末尾；
  * - **非固定组**按 AGENT_API_PLANES 的实际持面渲染（apiDocKeysFor），没持有的组连索引都
  *   不出现；引用/交付纪律（CHIP_QUOTE_GUIDE / DELIVERY_LEDGER_GUIDE）跟着持有拼在后面。
  *
- * 顺序纪律不变：越不可变越靠前——P0 与共用排版段、固定组对相应 role 逐字节一致，专属能力面
+ * 顺序纪律不变：越不可变越靠前——P0 与固定组对相应 role 逐字节一致，专属能力面
  * 按 role 分化，末尾才是会随设置变化的附加提示词。改这里任何一行，六份提示词的前缀同时变。
  */
 
@@ -22,6 +21,7 @@ import { APP_DATA_GUIDE, EXECUTE_BASE_GUIDE, SANDBOX_DISCIPLINE_GUIDE, SEEK_HELP
 import { ROLE_WORK_GUIDE, ROLE_CHANNEL_GUIDE } from './roleWorkGuide'
 import { COMMUNICATION_STYLE_GUIDE } from './turtleClan'
 import { compactWorkflowSection } from './workflowsGuide'
+import { promptBlock } from './promptFrames'
 
 /**
  * 一位声部的速查文档键 = **它实际持有的组 + 放行的顶层函数名 + core 展示组**。
@@ -56,34 +56,30 @@ export const SHARED_DISCIPLINE = [
  * 块序：execute/rexecute 机制 → 先查再用 → 应用数据守门 → 沙箱纪律 → 通用纪律 → 说话方式。
  * **这里不能出现任何具体身份**（龟门、排行、角色名、职责路由都不行）：本段要原样套给外部自定义 agent。
  * 全部内容对所有 role 逐字为真，通篇不提未开放 API 组，确保从 token 0 起全员命中缓存。
+ *
+ * 2026-11 重构：每一类约束用 XML 语义块隔离。模型不用在一条长列表里区分
+ * 「这是执行机制、那是数据守门、那是说话方式」；块序仍按不可变优先排列，缓存前缀不变。
  */
 export const ALL_AGENTS_COMMON_PREFIX = [
-  EXECUTE_BASE_GUIDE,
-  '',
-  SEEK_HELP_GUIDE,
-  '',
-  APP_DATA_GUIDE,
-  '',
-  SANDBOX_DISCIPLINE_GUIDE,
-  '',
-  SHARED_DISCIPLINE,
-  '',
-  COMMUNICATION_STYLE_GUIDE,
-].join('\n')
+  '<agent_common>',
+  promptBlock('execution_rules', EXECUTE_BASE_GUIDE),
+  promptBlock('lookup_rules', SEEK_HELP_GUIDE),
+  promptBlock('app_data_rules', APP_DATA_GUIDE),
+  promptBlock('sandbox_rules', SANDBOX_DISCIPLINE_GUIDE),
+  promptBlock('general_discipline', SHARED_DISCIPLINE),
+  promptBlock('communication_rules', COMMUNICATION_STYLE_GUIDE),
+  '</agent_common>',
+].join('\n\n')
 
 /**
  * 角色层共同前缀全文（P0）：所有 role 的系统提示词都以它开头（逐字节一致）。
- * 块序：全员通用前缀（execute 机制 / 应用数据守门 / 沙箱纪律 / 通用纪律 / 说话方式）
- * → 角色层与工作层 → 通道 → compact 会话压缩规程。
+ * 块序：全员通用前缀 → 对外协作 → 通道 → compact 会话压缩规程。
  * P0 之后只紧跟**固定组 API 速查**（六位 role 逐字节一致），再往后是身份定位与分工；
  * 领域 API、排版、语法、工作流规程只进 work 提示词，不再进 role。
  */
 export const SHARED_AGENT_PREFIX = [
   ALL_AGENTS_COMMON_PREFIX,
-  '',
-  ROLE_WORK_GUIDE,
-  '',
-  ROLE_CHANNEL_GUIDE,
-  '',
-  compactWorkflowSection(),
-].join('\n')
+  promptBlock('collaboration_rules', ROLE_WORK_GUIDE),
+  promptBlock('channel_rules', ROLE_CHANNEL_GUIDE),
+  promptBlock('compaction_rules', compactWorkflowSection()),
+].join('\n\n')

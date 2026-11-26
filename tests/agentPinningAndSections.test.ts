@@ -117,13 +117,14 @@ describe('提示词分段与共同提示词独立性', () => {
     expect(COMMON_EXECUTION_PREFIX_PROMPT).toBe(SHARED_AGENT_PREFIX)
   })
 
-  it('身份总纲不再教「称呼兄弟」，排行关系只留在各 role 的极简定位里', () => {
+  it('身份总纲不再教「称呼兄弟」，排行只在总纲出现，不在每个 role 里复述', () => {
     expect(TURTLE_CLAN_GUIDE).not.toContain('称呼兄弟')
     expect(TURTLE_CLAN_GUIDE).not.toContain('自报家门')
     expect(TURTLE_CLAN_GUIDE).toContain('禁止在每条回复开头自报身份')
-    expect(buildDispatcherSystem()).toContain('导师龟是二弟/老二')
-    expect(buildTeacherSystem()).toContain('经理龟是大哥')
-    expect(buildTeacherSystem()).toContain('做题龟是三弟/老三')
+    expect(TURTLE_CLAN_GUIDE).toContain('老二 · 导师龟（龟二，id tutor）')
+    expect(TURTLE_CLAN_GUIDE).toContain('老大 · 经理龟（龟一，id dispatcher）')
+    expect(buildDispatcherSystem()).not.toContain('导师龟是二弟/老二')
+    expect(buildTeacherSystem()).not.toContain('经理龟是大哥')
     expect(buildTeacherSystem()).toContain('silent: true')
   })
 
