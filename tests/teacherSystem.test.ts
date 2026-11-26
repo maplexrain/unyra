@@ -44,6 +44,10 @@ describe('内置围栏语法指引（plot / pisc / mermaid / videos / quote / ai
     expect(system).toContain('```videos')
     expect(system).toContain('```quote')
     expect(system).toContain('```aiqa')
-    expect(system).toContain('@文件路径(起始行-结束行)')
+    expect(system).toContain('@文件路径(行范围)')
+    // 旧的分段语法常量已不再拼进导师 work：新 guide 是单一 content_syntax
+    expect(system).toContain('### 1. 交互链接、跳转与根节点大纲')
+    expect(system).toContain('### 6. 富媒体动画')
+    expect(system).not.toContain('通用参数化可交互教学仿真卡片（PISC）')
   })
 })

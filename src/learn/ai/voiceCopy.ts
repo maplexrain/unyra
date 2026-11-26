@@ -8,16 +8,10 @@
  * 「我该接什么、该转给谁、交付什么」。
  *
  * 文案按角色逐字定稿；`duty` 第一行就是小节标题，整段以 '\n' 连；
- * `syntax` 是若干独立语法块，块间空行；与 api / 工作流相关的内容不进这里。
+ * `syntax` 是注入 `content_syntax` 的领域语法块；导师用单一完整 guide，其余按需给块。
  */
 import { PLOT_SYNTAX_GUIDE } from '../../lib/plot'
-import { PISC_SYNTAX_GUIDE } from '../../lib/pisc'
-import { MERMAID_SYNTAX_GUIDE } from '../../lib/mermaid'
-import { VIDEOS_SYNTAX_GUIDE } from '../../lib/videosBlock'
-import { QUOTE_SYNTAX_GUIDE } from '../../lib/quoteBlock'
-import { AIQA_SYNTAX_GUIDE } from '../../lib/aiqaBlock'
-import { DOC_LINK_SYNTAX, GOAL_OUTLINE_GUIDE, LEARN_LINK_SYNTAX } from './guides'
-import { moduleTextOf } from './promptModules'
+import { TUTOR_CONTENT_SYNTAX_GUIDE } from './tutorContentSyntax'
 import type { AgentVoice } from '../../agent/agentProfile'
 
 export interface VoiceCopy {
@@ -44,19 +38,7 @@ const TUTOR: VoiceCopy = {
     '- 函数图像语法修复归 fixer，由用户在报错卡片上触发；你只负责转交或说明。',
     '- 超出教学主线的诉求交给对应 role，或如实说明。',
   ],
-  syntax: [
-    LEARN_LINK_SYNTAX,
-    DOC_LINK_SYNTAX,
-    GOAL_OUTLINE_GUIDE,
-    PLOT_SYNTAX_GUIDE,
-    moduleTextOf('plot-forms'),
-    PISC_SYNTAX_GUIDE,
-    MERMAID_SYNTAX_GUIDE,
-    VIDEOS_SYNTAX_GUIDE,
-    QUOTE_SYNTAX_GUIDE,
-    AIQA_SYNTAX_GUIDE,
-    moduleTextOf('rich-animation'),
-  ],
+  syntax: [TUTOR_CONTENT_SYNTAX_GUIDE],
   discipline: [
     '约束与纪律（导师补充）：',
     '- **调研交出去，心智架构自己做**：联网检索是 researcher 的职责面——大纲 / 讲义需要权威背书时，把「要核准什么、要什么类型的来源」写清，按当前任务来源通道发过去，拿到调研交付再动笔。调研只用于核准事实；大纲拆解、概念阶梯、教学设计、推导脉络由你的专业知识与教育学推理自主制定，严禁照搬网页目录；引用不到权威来源时如实说明这是通识讲解。',
