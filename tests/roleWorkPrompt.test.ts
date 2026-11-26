@@ -40,12 +40,12 @@ describe('role / work 对外一体与汇报纪律', () => {
     expect(text).toContain('我去确认一下，稍等')
   })
 
-  it('work 主动用 ask，并在调研缺口时先回 role 转交 researcher', () => {
+  it('work 主动用 ask，并知道调研缺口要交回 role', () => {
     const text = buildWorkSystem('tutor')
     expect(text).toContain('需要用户拍板就主动用 `api.ask`')
-    expect(text).toContain('调研缺口先回 role')
-    expect(text).toContain('【需要转交·调研】')
-    expect(text).toContain('由 role 经当前通道委派 researcher')
+    expect(text).toContain('联网检索')
+    expect(text).toContain('【需要转交】')
+    expect(text).toContain('role 会转给对应 role')
   })
 
   it('role 看得到 work 的能力面，但明确自己调不到、只能委派', () => {
@@ -57,8 +57,8 @@ describe('role / work 对外一体与汇报纪律', () => {
     expect(tutor).toContain('api.work.create')
     expect(tutor).toContain('api.work.send')
     expect(tutor).toContain('api.host.send')
-    expect(tutor).toContain('你只能 `work.create` / `work.send` 派，不能直接调')
-    expect(tutor).toContain('`api.exam.read()` / `api.browser.waitFor()`')
+    expect(tutor).toContain('直接调用会被判')
+    expect(tutor).not.toContain('api.exam.read() / api.browser.waitFor()')
 
     const examSurface = workDelegationSectionFor('examiner')
     expect(examSurface).toContain('`exam`（')

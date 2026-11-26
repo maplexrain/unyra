@@ -773,8 +773,8 @@ export function groupIndexForSystemPrompt(allow?: ReadonlySet<string>): string {
 /** 速查的抬头两行（智能体团队分工后，共同前缀与专属区共用同一份抬头） */
 export function renderCompactApiHeader(): string {
   return (
-    '### 沙箱 API 速查（签名 + 用法边界）\n' +
-    '写代码前先扫一遍；参数、返回与完整示例用 api.<组>.<api>.__help() 现查，不要凭印象猜。'
+    '### 沙箱 API 速查（签名 + 一句话作用）\n' +
+    '写代码前先扫一遍；完整参数、返回、示例与边界用 api.<组>.<api>.__help() 现查，不要凭印象猜。'
   )
 }
 
@@ -810,12 +810,12 @@ export function renderCompactApiGroupBlocks(allow?: ReadonlySet<string>): string
 }
 
 /**
- * 系统提示词用的「签名 + 用法边界」紧凑手册（首轮静态注入）。
+ * 系统提示词用的「签名 + 一句话作用」紧凑手册（首轮静态注入）。
  *
  * 与被它取代的全量手册的差别：不带任何代码示例围栏、不带 params/returns 专列、
- * 不带组示例——完整参数、返回结构与可运行示例一律走 api.<组>.<api>.__help() 现查
+ * 不带组示例——完整参数、返回结构、可运行示例与边界一律走 api.<组>.<api>.__help() 现查
  * （buildSandboxHelp 已预渲染进 Worker，查询零成本）。内容仍全部从注册表生成：
- * 签名、一句话作用与用法边界就是 ApiDoc 本身，改 api 时这里自动跟上（对账纪律见文件头）。
+ * 签名、一句话作用就是 ApiDoc 本身，改 api 时这里自动跟上（对账纪律见文件头）。
  * allow 给定时只渲染放行的组（索引与顶层函数一并按面裁剪）；不给 = 全量。
  */
 export function renderCompactApiDocumentation(allow?: ReadonlySet<string>): string {

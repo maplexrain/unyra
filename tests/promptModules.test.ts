@@ -128,7 +128,8 @@ describe('work 系统提示词（紧凑静态注入；role 不再背执行细节
     expect(system).toContain('api.node — 节点宇宙')
     expect(system).toContain('api.schedule')
     expect(system).toContain('api.work')
-    expect(system).toContain('api.chat')
+    expect(system).toContain('api.host — 宿主交付')
+    expect(system).not.toContain('api.chat')
     expect(system).toContain('api.workspace')
     // 团队分工：联网与浏览器归调研员、判卷归命题官——这些组不在导师 work 的速查里
     expect(system).not.toContain('#### api.exam')
@@ -190,11 +191,10 @@ describe('work 系统提示词（紧凑静态注入；role 不再背执行细节
     expect(system).not.toContain('iwanna')
   })
 
-  it('api 手册全文只在紧凑速查一处出现（旧版的双重嵌入已退役）', () => {
-    // workspace.list 的用法说明全文只在速查里出现一次——旧版在手册与专项手册各一份
+  it('非固定组改为紧凑签名，不再内嵌完整 group usage', () => {
     const marker = '工作区是用户交付物的落点'
-    expect(system.indexOf(marker)).toBeGreaterThan(-1)
-    expect(system.indexOf(marker)).toBe(system.lastIndexOf(marker))
+    expect(system).not.toContain(marker)
+    expect(system).toContain('workspace.list')
   })
 
   it('所有内容生成声部（tutor / examiner / designer）共用排版指南与 component 语法', () => {

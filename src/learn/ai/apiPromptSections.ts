@@ -23,7 +23,7 @@ export interface ApiPromptParts {
 /** 按 role 的固定面拼出 api 提示词（领域面不再进 role prompt） */
 export function apiPromptPartsFor(voice: AgentVoice): ApiPromptParts {
   const allow = apiDocKeysFor(voice)
-  const doc = renderSplitApiDocumentation(allow, FIXED_API_PLANE)
+  const doc = renderSplitApiDocumentation(allow, FIXED_API_PLANE, { variableConcise: true })
   const holds = (group: string): boolean => AGENT_API_PLANES[voice].groups.includes(group)
 
   const tail: string[] = []
@@ -39,7 +39,7 @@ export function apiPromptPartsFor(voice: AgentVoice): ApiPromptParts {
 /** work 层的 api 两段：固定组 host/tmp + 按 role 派生的非固定组 */
 export function workApiPromptPartsFor(role: AgentProfileId): ApiPromptParts {
   const allow = workApiDocKeysFor(role)
-  const doc = renderSplitApiDocumentation(allow, WORK_FIXED_PLANE)
+  const doc = renderSplitApiDocumentation(allow, WORK_FIXED_PLANE, { variableConcise: true })
   const holds = (group: string): boolean => WORK_API_PLANES[role].groups.includes(group)
 
   const tail: string[] = []
@@ -79,13 +79,13 @@ export function workDelegationSectionFor(role: AgentProfileId): string {
   return [
     '### work 能做什么（只能委派，role 自己调不到）',
     '',
-    '你的 work 沙箱按分工还持有这些 api：',
+    '你的 work 沙箱按分工持有：',
     '',
     surface,
     '',
-    '具体方法（如 `exam.read`、`browser.waitFor`）由 work 在自己的沙箱里用 `api.<组>.__help()` 现查；你只需要判断该不该派、派给哪个 work。',
+    '方法由 work 用 `api.<组>.__help()` 现查；你只判断该不该派、派给哪个 work。',
     '',
-    '**这些 api 不在 role 的沙箱里**，role 这边只有 `tmp / work / chat` + `compact`（外加恒在的 `help`）。在 role 里直接写 `api.exam.read()` / `api.browser.waitFor()` 会被判「没有这个 api」。需要用时只能 `api.work.create` 新建、`api.work.send` 续用，让 work 在它自己的沙箱里调用；work 再用 `api.host.send` 把结果交回你。不要把 work 的能力当成自己可调的工具。',
+    '**这些 api 不在 role 的沙箱里**：role 只有 `tmp / work / chat` + `compact` + `help`，直接调用会被判「没有这个 api」；你只能 `api.work.create` / `api.work.send` 派，不能直接调。work 再用 `api.host.send` 交回。',
   ]
     .filter((part) => part !== '')
     .join('\n')

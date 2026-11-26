@@ -9,7 +9,9 @@
  *    只渲染实际持有的组；没持有的组连索引都不出现（提示词与运行时 apiAllow 同一口径）。
  *
  * 固定组只列「签名 + 一句话作用」，组 usage、trap、索引都交给共同前缀与 __help()，
- * 避免和 ROLE_WORK_GUIDE / ROLE_CHANNEL_GUIDE 重复；非固定组仍保留完整用法边界。
+ * 避免和 ROLE_WORK_GUIDE / ROLE_CHANNEL_GUIDE 重复；非固定组默认也走同一档
+ * （调用方传 `variableConcise` 时），需要完整边界就查 `__help()`，不再把组介绍
+ * 和组块各渲染一遍。
  */
 
 import { promotedGroups, renderCompactApiHeader, type ApiGroupDoc } from './apiRegistry'
@@ -39,6 +41,7 @@ const ALWAYS_CORE = 'help'
 export function renderSplitApiDocumentation(
   allow: ReadonlySet<string>,
   split: ApiPlaneSplit,
+  options: { variableConcise?: boolean } = {},
 ): SplitApiDoc {
   const groups = promotedGroups()
   const core = groups.find((g) => g.key === 'core')
@@ -66,15 +69,9 @@ export function renderSplitApiDocumentation(
   const variableGroups = groups.filter(
     (g) => g.key !== 'core' && allow.has(g.key) && !split.groups.includes(g.key),
   )
-  const variableIndex = [
-    variableTop.size ? '- 顶层函数（专属）：' + [...variableTop].join(' / ') : '',
-    ...variableGroups.map(indexLine),
-  ]
-    .filter(Boolean)
-    .join('\n')
   const variableBlocks = [
-    core && variableTop.size ? renderGroupBlock(core, variableTop) : '',
-    ...variableGroups.map((g) => renderGroupBlock(g)),
+    core && variableTop.size ? renderGroupBlock(core, variableTop, options.variableConcise) : '',
+    ...variableGroups.map((g) => renderGroupBlock(g, undefined, options.variableConcise)),
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -89,21 +86,11 @@ export function renderSplitApiDocumentation(
     .filter((part) => part !== '')
     .join('\n\n')
 
-  const variable = variableIndex || variableBlocks
-    ? ['### 非固定组（本 role 专属）',
-        variableIndex ? '**非固定组索引**\n' + variableIndex : '',
-        '',
-        variableBlocks,
-      ]
-        .filter((part) => part !== '')
-        .join('\n\n')
+  const variable = variableBlocks
+    ? ['### 非固定组（本 role 专属）', variableBlocks].join('\n\n')
     : ''
 
   return { fixed, variable }
-}
-
-function indexLine(group: ApiGroupDoc): string {
-  return '- api.' + group.key + ' — ' + group.label + '：' + group.intro
 }
 
 /** 与 apiRegistry.renderCompactApiGroupBlocks 同格式；members 给定时只渲染其中的成员 */
