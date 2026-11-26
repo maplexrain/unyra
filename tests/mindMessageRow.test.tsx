@@ -211,7 +211,7 @@ describe('MindMessageRow', () => {
     host.remove()
   })
 
-  it('work 消息同样拆成原子行，work 标识只出现在首行抬头', () => {
+  it('work 消息拆成原子行后，每一行都标明属于哪只 work', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -248,12 +248,15 @@ describe('MindMessageRow', () => {
     const units = [...host.querySelectorAll<HTMLElement>('[data-mind-unit-id]')]
     expect(units).toHaveLength(2)
     expect(units.every((row) => row.getAttribute('data-work-message') === 'w1')).toBe(true)
+    expect(units.every((row) => row.getAttribute('data-work-marker') === 'medium-tools-article')).toBe(true)
+    expect(units.every((row) => row.querySelector('[data-work-chip]')?.textContent?.includes('Work') ?? false)).toBe(true)
     expect(units.every((row) => !row.className.includes('bg-amber-500/10'))).toBe(true)
     expect(units.every((row) => row.style.filter === 'brightness(0.8)')).toBe(true)
     expect(units.every((row) => row.getAttribute('data-mind-unit-ts') === '1700000000000')).toBe(true)
     expect(units.every((row) => /\d{2}:\d{2}/.test(row.textContent ?? ''))).toBe(true)
-    expect(units[0].textContent).toContain('Work')
     expect(units[0].textContent).toContain('medium-tools-article')
+    expect(units[1].textContent).toContain('Work')
+    expect(units[1].textContent).toContain('medium-tools-article')
     expect(units[1].querySelector('[data-mind-channel]')).toBeNull()
 
     act(() => {

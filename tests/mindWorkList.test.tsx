@@ -127,7 +127,7 @@ describe('mind 上下文账与 work 消息内联', () => {
     const workRow = r.host.querySelector('[data-work-message="w1"]')
     expect(workRow).not.toBeNull()
     expect(workRow?.getAttribute('data-mind-ts')).toBe('200')
-    expect(workRow?.textContent).toContain('work ·')
+    expect(workRow?.textContent).toContain('Work')
     expect(workRow?.textContent).toContain('调研-1')
     expect(workRow?.textContent).toContain('调研中间结果')
     expect(r.host.querySelector('[data-inline-work-window]')).toBeNull()

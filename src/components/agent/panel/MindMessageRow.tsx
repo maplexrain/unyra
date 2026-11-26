@@ -125,6 +125,7 @@ function MindUnitHeader({
       <div className="mb-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
         <span
           data-mind-channel={channelKey}
+          data-work-chip={channelKey === 'work' ? work?.name || fromName : undefined}
           className={
             'inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ' +
             style.className
@@ -133,7 +134,6 @@ function MindUnitHeader({
           <Icon size={10} className="shrink-0" />
           {t(style.label)}
         </span>
-        {work && <span className="shrink-0 text-[10px] font-medium text-amber-700">work ·</span>}
         <span className="min-w-0 max-w-[42%] truncate font-medium text-ink-strong" title={fromName}>
           {fromName}
         </span>
@@ -213,6 +213,9 @@ function MindUnitRow({
   const transfer = workTransferOf(m)
   const isUser = m.role === 'user' || m.channel?.from.kind === 'user'
   const isBody = part?.type === 'text' || part?.type === 'notice' || item?.type === 'inject'
+  const isWorkRow = channelKey === 'work'
+  /** 同一条 work 消息拆出来的每一行都要带 work 标识；首行用抬头里的渠道徽标，后续行用这里的小徽标 */
+  const workLabel = work?.name || m.channel?.from.name?.trim() || m.channel?.to.name?.trim() || ''
   /**
    * 左侧色条：
    * - work 收 / 发两个方向各一种颜色，避免同一条时间线里混淆；
@@ -268,6 +271,7 @@ function MindUnitRow({
       data-mind-unit-ts={m.ts}
       data-mind-part-type={item?.type ?? 'empty'}
       data-work-message={work ? work.id : undefined}
+      data-work-marker={isWorkRow ? workLabel || 'work' : undefined}
       data-work-transfer={transfer ?? undefined}
       data-mind-collapsible={collapseText ? 'true' : undefined}
       data-mind-expanded={collapseText ? (expanded ? 'true' : 'false') : undefined}
@@ -290,8 +294,27 @@ function MindUnitRow({
           ratio={ratio}
           hideTime={hideTime}
         />
-      ) : !hideTime ? (
-        <div className="mb-0.5 text-[10px] tabular-nums text-ink-faint">{timeOf(m.ts)}</div>
+      ) : isWorkRow || !hideTime ? (
+        <div
+          data-work-row-label={isWorkRow ? 'true' : undefined}
+          className="mb-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-ink-faint"
+        >
+          {isWorkRow && (
+            <span
+              data-work-chip
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9.5px] font-medium text-amber-700"
+            >
+              <Wrench size={9} className="shrink-0" />
+              Work
+            </span>
+          )}
+          {isWorkRow && workLabel && (
+            <span className="min-w-0 max-w-[45%] truncate text-ink-soft" title={workLabel}>
+              {workLabel}
+            </span>
+          )}
+          {!hideTime && <span className="shrink-0 tabular-nums">{timeOf(m.ts)}</span>}
+        </div>
       ) : null}
       <div
         ref={measureRef}
