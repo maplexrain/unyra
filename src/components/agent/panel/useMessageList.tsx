@@ -48,7 +48,7 @@ type TimelineItem =
   | { kind: 'segment'; key: string; ts: number; seq: number; seg: Segment }
   | { kind: 'work'; key: string; ts: number; seq: number; item: WorkTimelineMessage }
 
-/** 隐藏消息 → 过程组里那一条（标签取 mark，正文取它进上下文的原文） */
+/** 隐藏消息 → 过程行里那一条（标签取 mark，正文取它进上下文的原文） */
 function toInjectItem(m: ConversationMessage): InjectItem {
   return {
     type: 'inject',
@@ -300,15 +300,34 @@ export function useMessageList({
         )
       })}
 
-      {streaming && streaming.length > 0 && (
-        <div className="mb-4">
-          {/*
-            还没落库的那一轮：攒下的提示词注入交给它——与落库之后并进回复是同一个位置，
-            用户不会在这一轮收口时看到那几行「跳」一下。
-          */}
-          <Parts parts={streaming} prelude={pending.length ? pending : undefined} streaming={true} />
-        </div>
-      )}
+      {streaming && streaming.length > 0 &&
+        (mind ? (
+          <MindMessageRow
+            m={{
+              id: 'live:role',
+              role: 'assistant',
+              ts: 0,
+              parts: streaming,
+            }}
+            hideTime
+            agentName={agentName}
+            faded={false}
+            flash={false}
+            setBubblePreview={setBubblePreview}
+            onOpenFile={onOpenFile}
+            goalId={goalId}
+            prelude={pending.length ? pending : undefined}
+            streaming
+          />
+        ) : (
+          <div className="mb-4">
+            {/*
+              还没落库的那一轮：攒下的提示词注入交给它——与落库之后并进回复是同一个位置，
+              用户不会在这一轮收口时看到那几行「跳」一下。
+            */}
+            <Parts parts={streaming} prelude={pending.length ? pending : undefined} streaming={true} />
+          </div>
+        ))}
 
       {/* 没有流式内容、也没有回复可挂的注入（极少见：用户刚发出、导师还没开口）：自己成一组 */}
       {pending.length > 0 && !(streaming && streaming.length > 0) && (

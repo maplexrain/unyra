@@ -43,8 +43,8 @@ export interface MessageListProps {
   emptyVoice?: string
   emptyName?: string
   /**
-   * 思维层：消息不带聊天气泡；相邻思考/工具/提示词收成一条可折叠过程组，
-   * 消息行头部另画渠道与上下文账。work 视图恒为 true；role 视图由 chat/mind 页签决定。
+   * 思维层：消息不带聊天气泡；每条消息内部的思考 / 工具 / 正文拆成平级原子行，
+   * work 消息也走同一套拆分，再按时间戳并入 role 时间线。消息行头部另画渠道与上下文账。
    */
   mind?: boolean
   /** 当前 role 的显示名：mind 无信封行与用户消息对端标签用 */
