@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronLeft, ChevronRight, FileText, HelpCircle, Upload, X } from 'lucide-react'
-import type { AskAnswers, AskFileAttachment, AskFormPayload, AskQuestion } from '../../../agent/tools'
+import type { AskAnswer, AskAnswers, AskFileAttachment, AskFormPayload, AskQuestion } from '../../../agent/tools'
 import { renderInline } from '../../../lib/markdown'
 import { NO_AUTOFILL } from '../../../lib/autofill'
 import { t } from '../../../i18n'
@@ -24,6 +24,8 @@ interface AskDraft {
   files?: AskFileAttachment[]
 }
 
+const OTHER_ID = '__other__'
+
 function initDraft(q: AskQuestion): AskDraft {
   const min = q.min ?? 0
   const max = q.max ?? 100
@@ -34,6 +36,24 @@ function initDraft(q: AskQuestion): AskDraft {
     sliderValue: q.type === 'slider' ? (typeof q.defaultValue === 'number' ? q.defaultValue : min) : undefined,
     rangeValue: q.type === 'dual_slider' ? (Array.isArray(q.defaultValue) ? q.defaultValue : [min, max]) : undefined,
     files: q.type === 'upload' ? [] : undefined,
+  }
+}
+
+/** 已提交答案 → 表单草稿：只读回看时把当时选中的项、填的字、滑杆值原样摆回去。 */
+function draftFromAnswer(q: AskQuestion, answer?: AskAnswer): AskDraft {
+  const base = initDraft(q)
+  if (!answer) return base
+  return {
+    ...base,
+    picked: [
+      ...(answer.pickedIds ?? []),
+      ...(answer.other ? [OTHER_ID] : []),
+    ],
+    other: answer.other ?? '',
+    text: answer.text ?? '',
+    sliderValue: answer.value ?? base.sliderValue,
+    rangeValue: answer.rangeValue ?? base.rangeValue,
+    files: answer.files ?? base.files,
   }
 }
 
@@ -61,15 +81,22 @@ export function AskFormCard({
   onSubmit,
   onCancel,
   hideTitle = false,
+  readOnly = false,
+  submittedAnswers,
 }: {
   form: AskFormPayload
   onSubmit: (answers: AskAnswers) => void
   onCancel: () => void
   /** 气泡外层已经有标题时，卡里不再重复一遍 */
   hideTitle?: boolean
+  /** 已提交后的只读回看：控件不可改，只保留翻题与已填内容 */
+  readOnly?: boolean
+  /** 提交时的答案快照；只读模式用它回填 */
+  submittedAnswers?: AskAnswers
 }) {
+  const answerById = new Map((submittedAnswers ?? []).map((a) => [a.id, a]))
   const [drafts, setDrafts] = useState<Record<string, AskDraft>>(() =>
-    Object.fromEntries(form.questions.map((q) => [q.id, initDraft(q)])),
+    Object.fromEntries(form.questions.map((q) => [q.id, draftFromAnswer(q, answerById.get(q.id))])),
   )
   /** 现在翻到第几题（**可见题目**里的下标）；dir 记录翻的方向，滑入动画跟着它走 */
   const [step, setStep] = useState(0)
@@ -107,6 +134,7 @@ export function AskFormCard({
   const visible = form.questions.filter(visibleOf)
 
   const toggle = (q: AskQuestion, id: string) => {
+    if (readOnly) return
     const cur = draftOf(q.id)
     if (q.type === 'single') {
       patch(q.id, { picked: cur.picked.includes(id) ? [] : [id] })
@@ -114,8 +142,6 @@ export function AskFormCard({
       patch(q.id, { picked: cur.picked.includes(id) ? cur.picked.filter((x) => x !== id) : [...cur.picked, id] })
     }
   }
-
-  const OTHER_ID = '__other__'
 
   // 条件题的出现/消失会让 visible 变短：step 一律夹在合法范围里
   const idx = Math.min(step, Math.max(0, visible.length - 1))
@@ -130,6 +156,7 @@ export function AskFormCard({
 
   /** 单选题：选中就自动翻下一题（留一拍让人看见选中态）；最后一题停住等提交 */
   const scheduleAdvance = () => {
+    if (readOnly) return
     if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current)
     if (!q || last) return
     const target = idx + 1
@@ -141,7 +168,7 @@ export function AskFormCard({
   }
 
   const handleFiles = async (fileList: FileList | File[]) => {
-    if (!q || q.type !== 'upload') return
+    if (readOnly || !q || q.type !== 'upload') return
     const newFiles: AskFileAttachment[] = []
     const maxBytes = (q.maxSizeMb ?? 32) * 1024 * 1024
     for (let i = 0; i < fileList.length; i++) {
@@ -172,6 +199,7 @@ export function AskFormCard({
   }
 
   const submit = () => {
+    if (readOnly) return
     const answers: AskAnswers = visible.map((q0) => {
       const d = draftOf(q0.id)
       const pickedIds = d.picked.filter((x) => x !== OTHER_ID)
@@ -202,7 +230,13 @@ export function AskFormCard({
   }
 
   return (
-    <div className="moji-bloom-up-in mb-2 rounded-xl border border-seal/40 bg-card shadow-[0_8px_28px_rgba(31,27,23,0.14)]">
+    <div
+      className={
+        'moji-bloom-up-in mb-2 rounded-xl border bg-card shadow-[0_8px_28px_rgba(31,27,23,0.14)] ' +
+        (readOnly ? 'border-line-strong/70' : 'border-seal/40')
+      }
+      data-ask-form-readonly={readOnly ? 'true' : undefined}
+    >
       <div className="flex items-center gap-1.5 border-b border-line px-3 py-2">
         {!hideTitle && (
           <>
@@ -270,7 +304,7 @@ export function AskFormCard({
                     全部答案交卷。对错、二选一这类一秒能答完的题，省掉再瞄一眼右下角
                     「提交」的那一步；想换答案就点别的选项，选中态会跟着过去。
                   */
-                  const quickSubmit = last && q.type === 'single' && checked && o.id !== OTHER_ID
+                  const quickSubmit = !readOnly && last && q.type === 'single' && checked && o.id !== OTHER_ID
                   if (quickSubmit) {
                     return (
                       <button
@@ -290,7 +324,8 @@ export function AskFormCard({
                     <label
                       key={o.id}
                       className={
-                        'flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] transition ' +
+                        'flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] transition ' +
+                        (readOnly ? 'cursor-default ' : 'cursor-pointer ') +
                         (checked
                           ? 'border-seal/50 bg-seal/[0.07] text-ink-strong'
                           : 'border-line bg-paper/60 text-ink hover:border-line-strong')
@@ -300,6 +335,7 @@ export function AskFormCard({
                         type={q.type === 'single' ? 'radio' : 'checkbox'}
                         name={'moji-ask-' + q.id}
                         checked={checked}
+                        disabled={readOnly}
                         onChange={() => {
                           toggle(q, o.id)
                           // 单选选完就往下走（见 scheduleAdvance）；取消选中不翻
@@ -315,7 +351,8 @@ export function AskFormCard({
                 {/* 「其他」：选了就亮出补充输入框 */}
                 <label
                   className={
-                    'flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] transition ' +
+                    'flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] transition ' +
+                    (readOnly ? 'cursor-default ' : 'cursor-pointer ') +
                     (draftOf(q.id).picked.includes(OTHER_ID)
                       ? 'border-seal/50 bg-seal/[0.07] text-ink-strong'
                       : 'border-line bg-paper/60 text-ink hover:border-line-strong')
@@ -324,6 +361,7 @@ export function AskFormCard({
                   <input
                     type={q.type === 'single' ? 'radio' : 'checkbox'}
                     checked={draftOf(q.id).picked.includes(OTHER_ID)}
+                    disabled={readOnly}
                     onChange={() => {
                       // 选中「其他」**不**自动翻题：用户还要在补充框里打字，
                       // 刚点上就被翻走是最气的交互；其余选项才走自动翻页
@@ -334,8 +372,9 @@ export function AskFormCard({
                   <span className="shrink-0">{t('其他：')}</span>
                   <input
                     value={draftOf(q.id).other}
+                    readOnly={readOnly}
                     onFocus={() => {
-                      if (!draftOf(q.id).picked.includes(OTHER_ID)) toggle(q, OTHER_ID)
+                      if (!readOnly && !draftOf(q.id).picked.includes(OTHER_ID)) toggle(q, OTHER_ID)
                     }}
                     onChange={(e) => patch(q.id, { other: e.target.value })}
                     placeholder={t('写在这里')}
@@ -347,6 +386,7 @@ export function AskFormCard({
             ) : q.type === 'short' ? (
               <textarea
                 value={draftOf(q.id).text}
+                readOnly={readOnly}
                 onChange={(e) => patch(q.id, { text: e.target.value })}
                 rows={2}
                 placeholder={t('在这里回答…')}
@@ -369,6 +409,7 @@ export function AskFormCard({
                     max={q.max ?? 100}
                     step={q.step ?? 1}
                     value={draftOf(q.id).sliderValue ?? (q.min ?? 0)}
+                    disabled={readOnly}
                     onChange={(e) => patch(q.id, { sliderValue: Number(e.target.value) })}
                     className="w-full accent-seal cursor-pointer h-2 rounded-lg bg-line/80"
                   />
@@ -411,6 +452,7 @@ export function AskFormCard({
                       max={max}
                       step={step}
                       value={low}
+                      disabled={readOnly}
                       onChange={(e) => {
                         const v = Math.min(Number(e.target.value), high)
                         patch(q.id, { rangeValue: [v, high] })
@@ -423,6 +465,7 @@ export function AskFormCard({
                       max={max}
                       step={step}
                       value={high}
+                      disabled={readOnly}
                       onChange={(e) => {
                         const v = Math.max(Number(e.target.value), low)
                         patch(q.id, { rangeValue: [low, v] })
@@ -449,12 +492,17 @@ export function AskFormCard({
                       void handleFiles(e.dataTransfer.files)
                     }
                   }}
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => { if (!readOnly) fileInputRef.current?.click() }}
                   className={
-                    'flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-colors ' +
-                    (isDragging
+                    'flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition-colors ' +
+                    (readOnly
+                      ? 'cursor-default border-line/60 bg-paper/30 text-ink-faint '
+                      : 'cursor-pointer ') +
+                    (isDragging && !readOnly
                       ? 'border-seal bg-seal/10 text-seal-deep'
-                      : 'border-line/80 hover:border-seal/50 bg-paper/40 hover:bg-paper/70 text-ink-soft')
+                      : !readOnly
+                        ? 'border-line/80 hover:border-seal/50 bg-paper/40 hover:bg-paper/70 text-ink-soft'
+                        : '')
                   }
                 >
                   <input
@@ -474,13 +522,15 @@ export function AskFormCard({
                     <Upload size={16} />
                   </div>
                   <div className="text-[12px] font-medium text-ink">
-                    {t('点击或拖拽文件到此处上传')}
+                    {readOnly ? t('已提交，附件不可更改') : t('点击或拖拽文件到此处上传')}
                   </div>
-                  <div className="text-[10.5px] text-ink-faint mt-0.5">
-                    {q.accept ? `${t('支持格式：{0}', q.accept)} · ` : ''}
-                    {t('最大 {0}MB', q.maxSizeMb ?? 32)}
-                    {q.multipleFiles ? ` · ${t('可选多个文件')}` : ''}
-                  </div>
+                  {!readOnly && (
+                    <div className="text-[10.5px] text-ink-faint mt-0.5">
+                      {q.accept ? `${t('支持格式：{0}', q.accept)} · ` : ''}
+                      {t('最大 {0}MB', q.maxSizeMb ?? 32)}
+                      {q.multipleFiles ? ` · ${t('可选多个文件')}` : ''}
+                    </div>
+                  )}
                 </div>
 
                 {draftOf(q.id).files && draftOf(q.id).files!.length > 0 && (
@@ -552,16 +602,36 @@ export function AskFormCard({
           {t('上一题')}
         </button>
         <span className="min-w-0 flex-1 truncate text-[10.5px] text-ink-faint">
-          {t('想答的答，懒得答的留空直接提交也可以；一分钟没有任何操作会自动收起')}
+          {readOnly
+            ? t('已提交 · 只读回看，答案都留在表单里')
+            : t('想答的答，懒得答的留空直接提交也可以；一分钟没有任何操作会自动收起')}
         </span>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="shrink-0 rounded-lg px-2.5 py-1 text-[11.5px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
-        >
-          {t('不回答了')}
-        </button>
-        {last || !q ? (
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="shrink-0 rounded-lg px-2.5 py-1 text-[11.5px] text-ink-soft transition hover:bg-line/60 hover:text-ink"
+          >
+            {t('不回答了')}
+          </button>
+        )}
+        {readOnly ? (
+          last || !q ? (
+            <span className="shrink-0 rounded-lg bg-line/35 px-2.5 py-1 text-[11px] text-ink-faint">
+              {t('已提交')}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => go(idx + 1)}
+              title={t('下一题（答案都留着）')}
+              className="flex shrink-0 items-center gap-0.5 rounded-lg bg-ink px-3 py-1.5 text-[11.5px] font-medium text-paper transition hover:bg-ink-strong"
+            >
+              {t('下一题')}
+              <ChevronRight size={12} />
+            </button>
+          )
+        ) : last || !q ? (
           <button
             type="button"
             onClick={submit}

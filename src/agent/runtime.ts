@@ -81,6 +81,11 @@ export interface AgentRunOptions {
   /** 流式补全实现；默认用真实的 client，测试时可注入替身 */
   stream?: StreamFn
   /**
+   * 只由 work 运行层传 true：允许声明 DeepSeek 服务端联网工具，并把搜索/读页
+   * 事件落到思维列表。role 与自由对话不传。
+   */
+  enableServerTools?: boolean
+  /**
    * 重试之间的退避等待；默认按 agent/retry 的 sleepMs（可被中止打断）。
    * 做成可注入同样是为了测试：不必真的等满那几档退避。
    */
@@ -266,7 +271,15 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
             maxTokens: provider.maxTokens,
             signal,
             reasoningEffort: opts.reasoningEffort,
+            enableServerTools: opts.enableServerTools,
             onDelta: (d) => {
+              if (d.serverTool) {
+                if (d.serverTool.type === 'call_started') {
+                  onEvent({ type: 'web-tool-start', step: d.serverTool.step, call: d.serverTool.call })
+                } else if (d.serverTool.type === 'call_completed') {
+                  onEvent({ type: 'web-tool-end', step: d.serverTool.step, call: d.serverTool.call })
+                }
+              }
               if (d.reasoning) onEvent({ type: 'thinking', delta: d.reasoning })
               if (d.content) {
                 const now = Date.now()
@@ -298,6 +311,9 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
           const shot = await requestOnce()
           result = shot.result
           reportUsage(shot.result, shot.pace)
+          if (shot.result.serverToolCalls?.length) {
+            onEvent({ type: 'web-tools-final', steps: shot.result.serverToolCalls })
+          }
           break
         } catch (err) {
           // 用户点了「停止」：不重试，交给最外层按取消收场
@@ -374,6 +390,7 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
           role: 'assistant',
           content: result.content || null,
           ...(result.reasoning ? { reasoning_content: result.reasoning } : {}),
+          ...(result.serverToolCalls?.length ? { server_tool_calls: result.serverToolCalls } : {}),
           tool_calls: toolCalls.map((tc) => ({
             id: tc.id,
             type: 'function' as const,

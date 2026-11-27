@@ -8,7 +8,7 @@
  * 私聊层不再显示 Agent 通道的内部转交；那属于思维层，群聊则另有群聊页。
  * 工具、思考、work 的内部过程也不进这里。
  */
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AskAnswers } from '../../../agent/tools'
 import { MessageSquare, UserRound } from 'lucide-react'
 import type { ChannelMessage, ChannelPeer } from '../../../agent/types'
@@ -22,11 +22,12 @@ import { AgentAvatarGlyph } from '../../learn/agent-team/AgentAvatarGlyph'
 import { BubbleBody } from './BubbleBody'
 import { AskBubble } from './AskBubble'
 import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
+import { ChannelQuoteChip, quoteInfoOf, stripChannelQuoteBlock } from './ChannelQuoteChip'
 import { DeliveryBlock } from './DeliveryBlock'
-import { WorkBindingBadge } from './WorkBindingBadge'
 import { MessageMediaGrid } from './MessageMedia'
 import { isVideoFile } from './messageMediaLayout'
 import { useRecentWindow } from './useRecentWindow'
+import { latestWorkAnchors, type WorkInlineSource } from '../../../lib/workInline'
 import type { AgentTeamMode } from '../../learn/agent-team/conversationList'
 
 function peerName(peer: ChannelPeer | undefined, fallback: string): string {
@@ -48,6 +49,7 @@ export function RoleChatView({
   onAskExpire,
   onAskHover,
   onOpenFile,
+  work,
 }: {
   channels: ChannelMessage[]
   /** 当前 role 的显示名（agent profile 覆盖后的真名） */
@@ -70,6 +72,8 @@ export function RoleChatView({
   onAskHover?: (askId: string, hovering: boolean) => void
   /** 交付组件里点开本地文件 */
   onOpenFile?: (pathOrRel: string, title?: string) => void
+  /** 正文里 `[标题](work: id)` 的实时数据源 */
+  work?: WorkInlineSource
 }) {
   const user = activeUser()
   const userName = user ? displayName(user.profile, t('未命名用户')) : t('未命名用户')
@@ -85,10 +89,56 @@ export function RoleChatView({
     return [...new Set(names.filter(Boolean))]
   }, [agentName, agentNames, userName])
 
+  const rootRef = useRef<HTMLDivElement>(null)
+  const quoteFlashTimer = useRef<number | null>(null)
+  const [quoteFocus, setQuoteFocus] = useState<{ id: string; index: number } | null>(null)
+  const [quoteFlashId, setQuoteFlashId] = useState<string | null>(null)
+
   /** 私聊层只保留 user 通道：Agent 通道的内部转交不在这里出现 */
   const allVisible = useMemo(() => channels.filter((m) => m.kind === 'user'), [channels])
-  const { start, hasOlder, sentinelRef } = useRecentWindow(allVisible.length, resetKey)
+  const { start, hasOlder, sentinelRef } = useRecentWindow(
+    allVisible.length,
+    resetKey,
+    quoteFocus?.index ?? -1,
+  )
   const visible = allVisible.slice(start)
+  /** 一个 work 只让当前私聊列表里最新的一条消息展示内嵌状态；ask 气泡不算锚点。 */
+  const workAnchors = useMemo(
+    () => latestWorkAnchors(
+      allVisible.filter((m) => !m.ask && m.text.trim()).map((m) => ({ id: m.id, text: m.text })),
+      work,
+    ),
+    [allVisible, work],
+  )
+  const channelById = useMemo(() => new Map(allVisible.map((m) => [m.id, m])), [allVisible])
+
+  useEffect(() => () => {
+    if (quoteFlashTimer.current !== null) window.clearTimeout(quoteFlashTimer.current)
+  }, [])
+
+  useEffect(() => {
+    setQuoteFocus(null)
+    setQuoteFlashId(null)
+  }, [resetKey])
+
+  /** 引用的目标可能落在最近窗口外：先把窗口撑到它，再滚动 + 闪一下。 */
+  useEffect(() => {
+    if (!quoteFocus) return
+    const root = rootRef.current
+    const target = root?.querySelector<HTMLElement>(`[data-message-id="${quoteFocus.id}"]`)
+    if (!target) return
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    setQuoteFlashId(quoteFocus.id)
+    setQuoteFocus(null)
+    if (quoteFlashTimer.current !== null) window.clearTimeout(quoteFlashTimer.current)
+    quoteFlashTimer.current = window.setTimeout(() => setQuoteFlashId(null), 1200)
+  }, [quoteFocus, start])
+
+  const jumpToQuote = (id: string) => {
+    const index = allVisible.findIndex((m) => m.id === id)
+    if (index < 0) return
+    setQuoteFocus({ id, index })
+  }
 
   const roleIdOf = (m: ChannelMessage): AgentTeamMode | null => {
     const id = m.from.kind === 'role' ? m.from.id : ''
@@ -177,7 +227,7 @@ export function RoleChatView({
   }
 
   return (
-    <div className="flex min-h-full flex-col gap-3 pb-2">
+    <div ref={rootRef} className="flex min-h-full flex-col gap-3 pb-2">
       {visible.length ? (
         <>
           {hasOlder ? (
@@ -192,9 +242,13 @@ export function RoleChatView({
             const hasMedia = Boolean(
               m.attachments?.images?.length || (m.attachments?.files ?? []).some((f) => isVideoFile(f)),
             )
-            const bubbleVisible = Boolean(m.text.trim() || hasMedia || m.delivery || m.work)
+            const bubbleVisible = Boolean(m.text.trim() || hasMedia || m.delivery || m.quoteMessageId)
             return (
-              <div key={m.id} className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}>
+              <div
+                key={m.id}
+                data-message-id={m.id}
+                className={'flex items-start gap-2.5 ' + (mine ? 'flex-row-reverse' : '')}
+              >
                 {avatarOf(m)}
                 <div className={'min-w-0 max-w-[450px] ' + (mine ? 'flex flex-col items-end' : 'flex flex-col items-start')}>
                   <div className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1 text-[10.5px]">
@@ -236,7 +290,8 @@ export function RoleChatView({
                       className={
                         'relative max-w-full break-words rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed ' +
                         bubbleBg +
-                        (mine ? ' rounded-tr-sm' : ' rounded-tl-sm')
+                        (mine ? ' rounded-tr-sm' : ' rounded-tl-sm') +
+                        (quoteFlashId === m.id ? ' moji-msg-flash' : '')
                       }
                     >
                       <span
@@ -246,11 +301,24 @@ export function RoleChatView({
                           (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
                         }
                       />
+                      {m.quoteMessageId ? (
+                        <ChannelQuoteChip
+                          quoteId={m.quoteMessageId}
+                          info={(() => {
+                            const quoted = channelById.get(m.quoteMessageId!)
+                            return quoted ? quoteInfoOf(quoted) : undefined
+                          })()}
+                          onJump={jumpToQuote}
+                        />
+                      ) : null}
                       <BubbleBody
-                        text={m.text}
+                        text={m.quoteMessageId ? stripChannelQuoteBlock(m.text) : m.text}
                         names={mentionNames}
                         labels={{ 用户: userName }}
                         tone={mine ? 'user' : 'agent'}
+                        work={work}
+                        messageId={m.id}
+                        workAnchorByKey={workAnchors}
                       />
                       {/* 图片 / 视频嵌在气泡内侧底部；其余文件挂在气泡外底侧 */}
                       <MessageMediaGrid
@@ -258,7 +326,6 @@ export function RoleChatView({
                         files={m.attachments?.files}
                       />
                       {/* 交付账嵌在气泡内侧底部，不再单独长成一个“交付气泡” */}
-                      {m.work ? <WorkBindingBadge binding={m.work} /> : null}
                       {m.delivery ? (
                         <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} />
                       ) : null}

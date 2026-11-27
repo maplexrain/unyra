@@ -213,6 +213,11 @@ export interface ChatMessage {
   reasoning_content?: string
   /** assistant 消息里的工具调用（回填历史时使用） */
   tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
+  /**
+   * DeepSeek 服务端联网工具的完整步骤。回传历史时原样带回，尤其 `signature`
+   * 决定之前读过的网页是否还在上下文里；只由 work 层产生。
+   */
+  server_tool_calls?: ServerToolStep[]
   /** role 为 tool 时对应的调用 id */
   tool_call_id?: string
 }
@@ -308,6 +313,64 @@ export function estimateUsage(
   return { input, output: countTokens(output), cacheRead: 0, cacheWrite: 0, estimated: true }
 }
 
+/** DeepSeek 服务端联网工具返回的网页来源。 */
+export interface WebSearchSource {
+  url: string
+  title?: string
+  siteName?: string
+  snippet?: string
+  publishedAt?: string
+  /** 搜索结果里的站点图标（仅展示） */
+  siteIcon?: string
+  /** 搜索结果配图（仅展示） */
+  imageUrl?: string
+}
+
+export interface ServerToolAction {
+  type: string
+  queries?: string[]
+  url?: string
+  pattern?: string
+}
+
+/** 一条 `deepseek_web_search` / `deepseek_read_url` 呼叫。 */
+export interface ServerToolCall {
+  id: string
+  type: string
+  kind: string
+  action: ServerToolAction
+  status: 'running' | 'completed' | 'failed'
+  sources?: WebSearchSource[]
+  page?: WebSearchSource
+  signature?: string
+  error?: { code?: string }
+  /** 服务端返回的步骤序号；UI 按它归组 */
+  step?: number
+  /** 调用在这一步内的序号；回传历史时原样带回 */
+  index?: number
+}
+
+/** 一轮推理内多个服务端步骤；回传历史时保持服务端给的顺序。 */
+export interface ServerToolStep {
+  index: number
+  reasoningContent?: string
+  calls: ServerToolCall[]
+}
+
+/** 服务端最终回答里的网页引用锚点。 */
+export interface UrlCitation {
+  url: string
+  title?: string
+  startIndex?: number
+  endIndex?: number
+}
+
+/** 流式过程中宿主可以即时拿到的服务端工具事件。 */
+export type ServerToolStreamEvent =
+  | { type: 'step_reasoning_done'; step: number }
+  | { type: 'call_started'; step: number; call: ServerToolCall }
+  | { type: 'call_completed'; step: number; call: ServerToolCall }
+
 export interface StreamChatResult {
   content: string
   reasoning: string
@@ -315,6 +378,10 @@ export interface StreamChatResult {
   finishReason: string | null
   /** 服务端这次报的用量；没有就是 undefined（调用方可退化成估算） */
   usage?: ChatUsage
+  /** DeepSeek 服务端联网工具最终完整清单（带 signature，可用于回传） */
+  serverToolCalls?: ServerToolStep[]
+  /** 最终回答里的来源锚点 */
+  annotations?: UrlCitation[]
 }
 
 /**
@@ -398,7 +465,12 @@ export interface StreamChatOptions {
   /** 思考等级；不传就不发该字段 */
   reasoningEffort?: ReasoningEffort
   signal?: AbortSignal
-  onDelta?: (d: { content?: string; reasoning?: string }) => void
+  onDelta?: (d: { content?: string; reasoning?: string; serverTool?: ServerToolStreamEvent }) => void
+  /**
+   * 只有 work 运行层会传 true：允许在已经声明本地 execute 的情况下，把 DeepSeek
+   * 服务端联网工具一并声明；role / 自由对话不传，避免把联网能力绕出 work。
+   */
+  enableServerTools?: boolean
   /** 这次请求的用途（只进用量台账，不发到服务端） */
   purpose?: UsagePurpose
 }

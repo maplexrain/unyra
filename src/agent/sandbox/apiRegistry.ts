@@ -61,6 +61,11 @@ export interface ApiGroupDoc {
 
 type ApiSeed = Omit<ApiDoc, 'full'> & { full?: string }
 
+/** 展示用完整签名：组内签名不带 api. 前缀，展示时统一补一次（避免 api.api.agent） */
+export function apiDisplaySignature(api: Pick<ApiDoc, 'full' | 'signature'>): string {
+  return api.full.includes('.') ? `api.${api.signature}` : api.signature
+}
+
 const a = (
   name: string,
   signature: string,
@@ -117,7 +122,7 @@ export const API_GROUPS: ApiGroupDoc[] = [
       { trap: '用户取消回 { cancelled: true }，超时回 { timedOut: true }——先判这两个再读答案；需求方向 / 范围 / 难度拿不准时先 ask，不要猜' },
       ),
       a('tiktok', 'tiktok()', '响一声系统提示音', '需要把用户视线叫回来时用；不要连续响。', 'await api.tiktok()'),
-      a('compact', 'compact({ summary, tasks? })', '提交上下文交接摘要', '只在本轮是压缩轮时调用；summary 是正文摘要，tasks 是未完成事项。本轮结束后旧消息才失活。', `await api.compact({ summary: '## 已讲清\\n- 极限的定义', tasks: ['继续讲夹逼定理'] })`, { trap: '只在压缩轮调用；本轮结束后旧消息才失活，别重复调用、别把摘要复述给用户' }),
+      a('compact', 'compact({ summary, tasks? })', '提交上下文交接摘要', '只在本轮是压缩轮时调用；summary 是交接摘要内容，tasks 是未完成事项。本轮结束后旧消息才失活。', `await api.compact({ summary: '## 已讲清\\n- 极限的定义', tasks: ['继续讲夹逼定理'] })`, { trap: '只在压缩轮调用；本轮结束后旧消息才失活，别重复调用、别把摘要复述给用户' }),
       a('fetch', 'fetch(url | { url } | urls[], { maxChars? })', '抓网页并转 Markdown（web.fetch 的别名）；数组 = 并发批量', '与 api.web.fetch 完全等价，提示词里教的就是这个名字。回 { ok, title, content, error? }，失败不抛异常，先判 ok；批量给数组（一次最多 5 篇，回 { ok, results: [...] }，一篇失败只标记它自己）；maxChars 直接截好，省掉自己 slice。', `const pages = await api.fetch([url1, url2], { maxChars: 6000 })`, { trap: '数组 = 并发批量（一次最多 5 篇）；失败不抛异常，先判 r.ok 再读 content' }),
       a(
         'see',
@@ -330,13 +335,13 @@ list() 回执的 rel 字段是**真实磁盘路径**：process.* 的 cwd 等需�
     '交付登记',
     '把这一轮的文件变动与参考引证登记到消息底部（一行一条，溢出省略）。',
     `只在**确实交付了东西**时调：写完或改完文档、讲义、大纲、试卷、工作区文件之后登记一次。
-**文档类任务必须同时登记 \`files\` + \`sources\`**：文件逐条进 \`files\`，正文引用逐条进 \`sources\`（title + http(s) URL）；只登文件、不登来源视为未交付。
+**文档类任务必须同时登记 \`files\` + \`sources\`**：文件逐条进 \`files\`，交付内容里实际引用的来源逐条进 \`sources\`（title + http(s) URL）；只登文件、不登来源视为未交付。
 没有交付物就不要调——空记录不显示，乱登记只会给用户添噪音。
 同一份账分几次登记会合并去重（路径 / URL 各自唯一）：role 按当前一轮，work 按该 work 会话累计；回执与后续转发拿到的都是整份累计快照。
-这是给**界面**看的账，不是给正文复述用的：正文里不必再抄一遍文件清单与参考来源。`,
+这是给**界面**看的账，不是给 \`text\` 复述用的：\`text\` 里不必再抄一遍文件清单与参考来源。`,
     [
       a('submit', 'delivery.submit({ files?, sources? })', '登记本轮交付',
-        'files: [{ path, action?: created|updated|deleted, note? }]；sources: [{ title, url }]（只收 http/https）。**文档类任务两个字段都必须有**：files 逐条登记文件，sources 按正文引用逐条登记，只登文件视为未交付。**path 要写数据树里的节点路径原样**（如「微积分/极限」，不要自己拼 /教学、/讲义 之类后缀），或工作区文件的相对路径（带扩展名）——界面点它时按这两种形态分别打开文档与文件。返回 { ok, files, sources, error? }；work 账按会话累计，返回整份快照。',
+        'files: [{ path, action?: created|updated|deleted, note? }]；sources: [{ title, url }]（只收 http/https）。**文档类任务两个字段都必须有**：files 逐条登记文件，sources 按交付内容里实际引用逐条登记，只登文件视为未交付。**path 要写数据树里的节点路径原样**（如「微积分/极限」，不要自己拼 /教学、/讲义 之类后缀），或工作区文件的相对路径（带扩展名）——界面点它时按这两种形态分别打开文档与文件。返回 { ok, files, sources, error? }；work 账按会话累计，返回整份快照。',
         `await api.delivery.submit({ files: [{ path: '微积分/极限', action: 'updated', note: '补了夹逼定理一节' }], sources: [{ title: '同济高等数学第七版', url: 'https://example.com/book' }] })`, { trap: '没有交付物就不要调；path 写数据树节点路径原样（如「微积分/极限」）或带扩展名的工作区相对路径' }),
     ],
   ),
@@ -358,16 +363,17 @@ list() 回执的 rel 字段是**真实磁盘路径**：process.* 的 cwd 等需�
   ),
   g(
     'browser',
-    '内置浏览器',
-    '操作界面上的网页页签：打开、查看、切换、关闭，以及页面交互骨架索引与智能读写。',
+    '智能体后台浏览器',
+    '智能体自己的浏览器会话：打开、查看、切换、关闭，以及页面交互骨架索引与智能读写；不占文档页签，也不会自动弹前台。',
     `操作闭环：index（获取带 [id] 的语义索引大纲，穿透 Shadow DOM）→ text/inspect（展开深入读正文与状态）→ click/fill/press/scroll（居中滚动并派发完整用户动作）。
-tabId 可省略，默认操作当前激活的网页页签；目标支持索引里的编号数字（如 12）或 CSS 选择器。
+tabId 可省略，默认操作当前 agent 的活动会话；目标支持索引里的编号数字（如 12）或 CSS 选择器。
+会话独立于用户的网页页签：open 只在智能体页后台打开，不切文档区；用户可在智能体面板的「网页」页实时查看并接管。
 这是用户的真实登录会话：提交/支付/删除等不可逆操作先 api.ask 确认。`,
     [
-      a('open', 'browser.open(url)', '开一个网页页签', '纯关键词会当搜索词；返回 tabId，首屏已基本加载完。先 tabs 查重，别重复开同一网址。', "const tab = await api.browser.open('https://example.com')"),
-      a('tabs', 'browser.tabs()', '列存活页签', '开工第一步；之后操作按 tabId 指名。', 'const tabs = await api.browser.tabs()'),
-      a('activate', 'browser.activate(tabId)', '切到某个页签', '目标网址已经开着就 activate，不要 open。', 'await api.browser.activate(tabId)'),
-      a('close', 'browser.close(tabId | tabId[])', '关闭网页页签', '用户自己开的别动；收尾时关掉中间搜索页/试错页，留下用户可能还要看的。', 'await api.browser.close(tabId)'),
+      a('open', 'browser.open(url)', '开一个后台浏览器会话', '纯关键词会当搜索词；返回 tabId/sessionId，不创建文档页签，也不切前台。先 tabs 查重，别重复开同一网址。', "const tab = await api.browser.open('https://example.com')"),
+      a('tabs', 'browser.tabs()', '列自己的后台会话', '开工第一步；之后操作按 tabId 指名。只列当前 agent 自己的会话，不列用户网页页签。', 'const tabs = await api.browser.tabs()', { trap: '只操作自己的 b: 会话；用户正在看的网页页签不归智能体管' }),
+      a('activate', 'browser.activate(tabId)', '设为当前活动会话', '目标网址已经开着就 activate，不要 open；只切换活动会话，不切换「网页」页，也不切文档页签。', 'await api.browser.activate(tabId)'),
+      a('close', 'browser.close(tabId | tabId[])', '关闭自己的后台会话', '收尾时关掉中间搜索页/试错页；不碰用户网页页签。', 'await api.browser.close(tabId)'),
       a('index', 'browser.index(tabId?, opts?)', '获取页面语义索引大纲', '深度穿透 Shadow DOM 与 iframe，返回带 [id] 的压缩结构文本。正文区与模式化列表会自动折叠。', 'const page = await api.browser.index()'),
       a('text', 'browser.text(tabId?, target, opts?)', '深入读取节点文本', '用于解折叠正文区或抓取特定容器的完整文本，支持 { maxChars, offset } 分段。', 'const article = await api.browser.text(4)'),
       a('inspect', 'browser.inspect(tabId?, target)', '探测节点详细属性', '读取节点的 tagName、value、placeholder、href、checked、disabled 以及几何尺寸。', 'const info = await api.browser.inspect(3)'),
@@ -507,19 +513,21 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
     `课堂域。写课件前**必调 schema()** 对齐 course 结构（动作列表字段名是 actions，不是 beats）；两套动效表严格分开：
 - action.verb：时间轴逐条调度的动词（显隐 / 强调 / 位移 / 动画），白名单 classroom.verbs()；
 - data-anim="名"：换幕挂载时播一次的入场动效，不受时间轴控制，清单 classroom.animations()；
-- 音效库 classroom.sounds()：22 个 WebAudio 实时合成音效，可在 visual.params.sfx、scene.sfx 或 checkpoint.sfx 中按需点缀；
+- 音效库 classroom.sounds()：内置 WebAudio 合成音效 + doc-design/classroom-sound--*.tsx 外部音效，可在 visual.params.sfx、scene.sfx 或 checkpoint.sfx 中按需点缀；
 - 把 data-anim 的名想当然填进 verb 曾经是最高频的静默失败——schema() 里的最小完整示例是唯一标准，
   editContent 写入时做结构校验（错误拒存并回原因），交付前可 classroom.check() 复查；
-- 组件与动效表达不了的场景，registerComponent / registerAnimation 自创注册。`,
+- 组件、动效或音效表达不了的场景，registerComponent / registerAnimation / registerSound 会写外部 TSX 模板文件。`,
     [
       a('schema', 'classroom.schema()', 'course 结构契约一次给齐（写课件前必看）', 'LessonCourse / LessonScene / 四类 action（speak / visual / wait / checkpoint）的完整字段与阻塞默认值、1920×1080 布局常量与预置舞台类、受控元素 id / data-hidden 语义、一份最小完整 course 示例。动作列表字段名是 actions，不是 beats。', "const s = await api.classroom.schema()", { trap: '动作列表字段名是 actions，不是 beats；节奏动效只能用 action.verb（verbs()），data-anim 是另一套入场表' }),
       a('verbs', 'classroom.verbs()', 'action.verb 时间轴动词白名单', '回 state（appear / highlight / move / dimOthers 等 11 个状态动词）与 anime（riseIn / popIn / unfold / stamp / shimmer / spotlight / ripple 等动画动词）两张表，每个动词一行用途。讲解节奏里的显隐强调位移只能从这里选；data-anim 是另一套表（animations()）。', 'const v = await api.classroom.verbs()'),
       a('components', 'classroom.components({ source?, query? }?)', '查询可用教学组件', '返回全部可用教学组件（31 种内置 ui-* 与外部注册）及其标签、说明与语法示例。', 'const r = await api.classroom.components()'),
       a('animations', 'classroom.animations({ source?, query? }?)', '查询 data-anim 入场动效表', '返回全部可用 data-anim 动效（换幕挂载时播一次，不受时间轴控制）及其名称、分类、推荐音效与挂载示例。注意：这不是 action.verb 白名单（那是 verbs()）。', 'const r = await api.classroom.animations()'),
-      a('sounds', 'classroom.sounds({ category?, query? }?)', '查询课堂音效库（22 种 WebAudio 合成音效）', '返回全部实时合成音效的名称、标签、分类（transition|accent|rhythm|feedback）、听感描述与推荐用法；可在 visual.params.sfx、scene.sfx、checkpoint.sfx 中引用，传 none 可关闭自带音。', "const s = await api.classroom.sounds()"),
+      a('sounds', 'classroom.sounds({ category?, query? }?)', '查询课堂音效库（内置 + 外部 TSX 音效）', '返回实时合成音效的名称、标签、分类（transition|accent|rhythm|feedback）、听感描述与推荐用法；外部音效来自 doc-design/classroom-sound--*.tsx。可在 visual.params.sfx、scene.sfx、checkpoint.sfx 中引用，传 none 可关闭自带音。', "const s = await api.classroom.sounds()"),
       a('check', 'classroom.check({ target })', '对已存课件做静态体检（不渲染画面）', '查动词白名单、target 与元素 id 对号、字幕句号、每句字数、data-hidden 死锁、音效名合法性与无动效画面；editContent 之后或自检时调，errors 要修、warnings 建议修。', 'const r = await api.classroom.check({ target: 课堂uuid })'),
-      a('registerComponent', 'classroom.registerComponent({ tag, name, description, template, defaultProps?, example? })', '注册自定义教学组件', 'tag 必须以 ui- 或 x- 开头；template 支持 {{prop}} 与 {{content}} 插槽。', `await api.classroom.registerComponent({ tag: 'ui-experiment', name: '实验展示卡', description: '展示实验器材与反应', template: '<div class="exp-card"><h4>{{title}}</h4><p>{{content}}</p></div>' })`),
-      a('registerAnimation', 'classroom.registerAnimation({ verb, name, description, keyframes, duration?, easing?, example? })', '注册自定义动效', 'verb 为动效动词；keyframes 为 anime.js 关键帧对象或数组。', `await api.classroom.registerAnimation({ verb: 'spiralZoom', name: '螺旋聚焦', description: '带轻微旋转的快速放大聚焦', keyframes: { scale: [0.3, 1], rotate: [-45, 0], opacity: [0, 1] }, duration: 600 })`),
+      a('registerComponent', 'classroom.registerComponent({ tag, name, description, source?, defaultProps?, example? })', '注册自定义教学组件（写外部 TSX 文件）', 'tag 必须以 ui- 或 x- 开头；会新建 users/{uid}/doc-design/classroom-component--{tag}.tsx 模板并热更新。默认模板直接生成 JSX component；要写完整 React 组件时传 source（TSX，export default { kind:\'classroom-component\', ..., component(props) { return <div>...</div> } }）。', `await api.classroom.registerComponent({ tag: 'ui-experiment', name: '实验展示卡', description: '展示实验器材与反应', source: '...' })`),
+      a('registerAnimation', 'classroom.registerAnimation({ verb, name, description, keyframes?, duration?, easing?, source? })', '注册自定义动效（写外部 TSX 文件）', 'verb 为动效动词；会新建 doc-design/classroom-animation--<verb>.tsx 模板。keyframes 为 anime.js 关键帧对象或数组；传 source 可直接给完整 TSX。', `await api.classroom.registerAnimation({ verb: 'spiralZoom', name: '螺旋聚焦', description: '带轻微旋转的快速放大聚焦', keyframes: { scale: [0.3, 1], rotate: [-45, 0], opacity: [0, 1] }, duration: 600 })`),
+      a('registerSound', 'classroom.registerSound({ name, label, description, category?, mood?, use?, source?, defaultDuration? })', '注册自定义音效（写外部 TSX 文件）', '会新建 doc-design/classroom-sound--<name>.tsx 模板。音效文件用 play(v, kit) 写 WebAudio：kit.tone({ f, d, peak, type, at, f2, wet }) / kit.noise({ filter, f, d, peak, at, f2, wet })，保存后热更新。', `await api.classroom.registerSound({ name: 'wood-chime', label: '木鱼清响', description: '木质短促的肯定反馈', category: 'feedback', use: '选择题答对' })`),
+      a('unregister', 'classroom.unregister({ kind, id })', '注销外部注册项', 'kind = component / animation / sound；只删 doc-design/ 下对应的外部 TSX 文件，内置项不可删。', `await api.classroom.unregister({ kind: 'sound', id: 'wood-chime' })`),
     ],
   ),
   g(
@@ -531,10 +539,10 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
 需要自创新排版配方时调 register / update / delete。`,
     [
       a('component.list', 'design.component.list({ query?, source? }?)', '获取已注册的排版配方组件清单', '只暴露 id、tag、name 与简短 description 以节省 token；支持 query 过滤与 source 筛选（builtin/external）。亦支持 design.componet.list。', "const res = await api.design.component.list()"),
-      a('component.get', 'design.component.get(idOrTag)', '获取详细的组件签名与插槽信息', '返回组件的 tag、name、description、slots、attrs、example 与 template 模板定义。亦支持 design.componet.get。', "const res = await api.design.component.get('Notice')"),
-      a('component.register', 'design.component.register({ tag, name, description, template?, example?, slots?, attrs? })', '注册新的排版配方组件', '注册自定义排版组件供教学正文使用。tag 为标签名；template 为 HTML 模板（支持 {{slot}} 插槽替换）。亦支持 design.componet.register。', "const res = await api.design.component.register({ tag: 'Notice', name: '提示卡', description: '高亮重要提示', template: '<div class=\"p-4 bg-amber-50 rounded\">{{title}}<p>{{describe}}</p></div>' })"),
-      a('component.update', 'design.component.update({ id, name?, tag?, description?, template?, example?, slots?, attrs? })', '更新外部注册的排版配方组件', '更新自定义配方组件内容；内置组件不可修改。亦支持 design.componet.update。', "const res = await api.design.component.update({ id: 'c-custom-1', description: '更新后的描述' })"),
-      a('component.delete', 'design.component.delete(id)', '删除外部注册的排版配方组件', '根据 id 删除外部组件；内置组件受保护不可删除。亦支持 design.componet.delete。', "const res = await api.design.component.delete('c-custom-1')"),
+      a('component.get', 'design.component.get(idOrTag)', '获取详细的组件签名与插槽信息', '返回组件的 tag、name、description、slots、attrs、example 与 file。外部组件 file 指向 doc-design/ 下的 TSX 文件。亦支持 design.componet.get。', "const res = await api.design.component.get('Notice')"),
+      a('component.register', 'design.component.register({ tag, name, description, source?, example?, slots?, attrs? })', '注册新的排版配方组件（写外部 TSX 文件）', '会新建 users/{uid}/doc-design/doc-component--{id}.tsx 模板并热更新，不写 localStorage。默认模板直接生成 JSX component，组件结构在文件里用 React 写；要自定义完整组件时传 source（TSX，export default { kind:\'doc-component\', ..., component(props) { return <div>...</div> } }）。亦支持 design.componet.register。', "const res = await api.design.component.register({ tag: 'Notice', name: '提示卡', description: '高亮重要提示', source: '...' })"),
+      a('component.update', 'design.component.update({ id, name?, tag?, description?, source?, example?, slots?, attrs? })', '更新外部注册的排版配方组件', '更新 doc-design/ 下的外部 TSX 文件并热更新；内置组件不可修改。自定义 component 的组件必须传 source（完整 TSX 源码）。亦支持 design.componet.update。', "const res = await api.design.component.update({ id: 'c-custom-1', description: '更新后的描述' })"),
+      a('component.delete', 'design.component.delete(id)', '删除外部注册的排版配方组件', '根据 id 删除 doc-design/ 下的外部 TSX 文件；内置组件受保护不可删除。亦支持 design.componet.delete。', "const res = await api.design.component.delete('c-custom-1')"),
     ],
   ),
   g(
@@ -565,10 +573,10 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
     'agent',
     '智能体名录',
     'role 共用：api.agent.list() 只读查询已注册 agent 的 id / 名称 / 简介。',
-    `想知道团队里有哪些 agent、各自负责什么时先 list；返回内置六位、自由对话与外部 agent。
+     `想知道当前有哪些 agent、各自负责什么时先 list；返回当前已注册的全部 agent（内置 + 自由对话 + 外部）。
 只读：不能改名、不能新建或删除 agent。`,
     [
-      a('list', 'api.agent.list()', '列出已注册的智能体', '回 { agents: [{ id, name, bio }], count }；内置在前、外部在后。', `const { agents } = await api.agent.list()`),
+      a('list', 'agent.list()', '列出已注册的智能体', '回 { agents: [{ id, name, bio }], count }；当前已注册的全部 agent（内置 + 自由对话 + 外部），内置在前、外部在后。', `const { agents } = await api.agent.list()`),
     ],
   ),
 
@@ -580,14 +588,14 @@ files.* 碰到它们会被拒绝，并提示该用哪一组。`,
 **role 掌握多个 work，work 只对接创建它的这一位 role**。work 做完必须用 api.host.send 把结果交回 role；
 role 收到 Work 通道消息后再决定怎么对用户/其他 agent 说。
 新建 work 会从空上下文重新读材料、重新固化提示词；能接上的任务先用 list 找已有 work 续用，别重复开新会话。
-status 只回执行轨迹的 execute 标题，不回工具参数与正文；要给 work 补上下文用 send，不要靠翻 status 拼过程。`,
+status 只回执行轨迹的 execute 标题，不回工具参数与输出；要给 work 补上下文用 send，不要靠翻 status 拼过程。`,
     [
-      a('list', 'api.work.list()', '列出本 role 的 work 会话', '回 { works: [{ name, status, runs, runtimeMs, lastActiveAt }] }；只列当前 role 自己的 work。', `const { works } = await api.work.list()`),
-      a('status', 'api.work.status(name)', '查看指定 work 的状态与最近轨迹', '回 { name, status, runs, runtimeMs, lastActiveAt, recentExecutes: [{ at, title }], lastDelivery?, lastIssue? }。recentExecutes 只含 execute 调用的标题（description），不含参数与正文。', `const s = await api.work.status("调研-1")`, { trap: 'status 不是对话记录：看不到 work 的中间正文，只能看状态、轮次、时长与 execute 标题' }),
-      a('stop', 'api.work.stop(name)', '强制停止当前 work 轮次', '中止正在跑的那一轮，保留 work 的上下文；之后可以再 work.send 续跑。', `await api.work.stop("调研-1")`),
-      a('create', 'api.work.create({ name? })', '创建 work 会话', 'name 可命名，省略时系统给 work-N；同一 role 内重名会被拒绝。创建时固化该 role 的 work 系统提示词。', `const w = await api.work.create({ name: "调研-1" })`, { trap: '先 list 看有没有能接上的旧 work；新建会从空上下文重读材料，别把小任务重复开成新会话' }),
-      a('kill', 'api.work.kill(name)', '删除 work 会话', '先中止当前轮，再把会话与上下文一起删除；不可恢复。', `await api.work.kill("调研-1")`, { trap: 'kill 是删除，不是停止；只想保留上下文续跑请用 stop' }),
-      a('send', 'api.work.send({ name, text?, messageId?, bindMessageId? })', '给 work 发任务或追问', 'text 是任务全文；messageId 可直接引用 role 会话里的用户消息（通道抬头 id: 后面的信封 id 也算，群聊里形如 g-...；连同附件转发，并标注来源）。bindMessageId 可选：把这轮 work 的实时状态挂到某条通道消息上（这段私聊或同目标群聊里的消息都行），该消息底部会出现一条「work 运行中 / 已完成 / 出错」状态条，含耗时与最近一次执行；不绑也能正常发。work 空闲就起一轮，运行中则排到跳边界注入。', `await api.work.send({ name: "调研-1", messageId: "m_123", bindMessageId: "m_123" })`, { trap: 'messageId 只能引用当前 role 会话里的消息（含通道抬头 id）；bindMessageId 可指向同目标群聊消息，但查不到会整笔拒绝。只引用转发、不挂状态时不要填 bindMessageId。' }),
+      a('list', 'work.list()', '列出本 role 的 work 会话', '回 { works: [{ name, status, runs, runtimeMs, lastActiveAt }] }；只列当前 role 自己的 work。', `const { works } = await api.work.list()`),
+      a('status', 'work.status(name)', '查看指定 work 的状态与最近轨迹', '回 { name, status, runs, runtimeMs, lastActiveAt, recentExecutes: [{ at, title }], lastDelivery?, lastIssue? }。recentExecutes 只含 execute 调用的标题（description），不含参数与输出。', `const s = await api.work.status("调研-1")`, { trap: 'status 不是对话记录：看不到 work 的中间输出，只能看状态、轮次、时长与 execute 标题' }),
+      a('stop', 'work.stop(name)', '强制停止当前 work 轮次', '中止正在跑的那一轮，保留 work 的上下文；之后可以再 work.send 续跑。', `await api.work.stop("调研-1")`),
+      a('create', 'work.create({ name? })', '创建 work 会话', 'name 可命名，省略时系统给 work-N；同一 role 内重名会被拒绝。创建时固化该 role 的 work 系统提示词。', `const w = await api.work.create({ name: "调研-1" })`, { trap: '先 list 看有没有能接上的旧 work；新建会从空上下文重读材料，别把小任务重复开成新会话' }),
+      a('kill', 'work.kill(name)', '删除 work 会话', '先中止当前轮，再把会话与上下文一起删除；不可恢复。', `await api.work.kill("调研-1")`, { trap: 'kill 是删除，不是停止；只想保留上下文续跑请用 stop' }),
+      a('send', 'work.send({ name, text?, messageId? })', '给 work 发任务或追问', 'text 是任务全文；messageId 可直接引用 role 会话里出现过的入站消息（用户发言、其他 role 的调研交付都算；通道抬头 id: 后面的信封 id 也可用），连同附件原样转发并标注来源。work 空闲就起一轮，运行中则排到跳边界注入。要给用户展示这个 work 的实时进度，在对外 `text` 里单独一行写 `[标题](work: work 名)`，不要试图把状态挂到某条消息上。', `await api.work.send({ name: "调研-1", messageId: "m_123" })`, { trap: 'messageId 只能引用当前 role 会话里的消息（含通道抬头 id）；调研交付全文不在 role 层展开，用这个字段原样转给 work。work.send 只负责派活，不负责消息级状态展示。' }),
     ],
   ),
 
@@ -596,24 +604,25 @@ status 只回执行轨迹的 execute 标题，不回工具参数与正文；要�
     '通道对话',
     'role 专属：chat.send 把对话发到用户 / Agent / Work / 群聊通道，可带附件；group 的 @ 只抄送上下文，mention 才是唯一激活开关，cc 是抄送名单。',
     `role 的所有外部消息都经通道：user（用户私聊）、agent（其他 role 私聊）、group（群聊）、work（自己的 work）。
-每条入站消息由宿主标注来源与时间戳；chat.send 的 text 是**对外说的话**，不是思维过程。
-**简短 / 详细同段**：交付物完成通知可在 text 里用单独一行 \`---\` 分隔：前面一句话口语化完成通知，后面写具体改动、索引名 / 标识符、专业术语与核验过程。聊天界面默认只显示分隔线前，用户可展开详细。只有用户目的是拿到额外交付物时才用；普通问答、寒暄、进度同步不要用；发给 work 时完整正文一起交给 work。
+每条入站消息由宿主标注来源与时间戳；chat.send 的 text 是**唯一对外内容字段**，不是思维过程。
+**简短 / 详细同段**：交付物完成通知可在 text 里用单独一行 \`---\` 分隔：前面一句话口语化完成通知，后面写具体改动、索引名 / 标识符、专业术语与核验过程。聊天界面默认只显示分隔线前，用户可展开详细。只有用户目的是拿到额外交付物时才用；普通问答、寒暄、进度同步不要用；发给 work 时完整 \`text\` 一起交给 work。
 **回复必须从最近一条入站消息的 channel 回去**：user 回 user；agent 回 agent（to=目标 role id）；group 回 group。
-群聊里 **@ 不再激活任何 agent**：正文里可以 @ 多位（只 @ 本次确实参与过的人，不要广播），@ 只把消息抄进被 @ 者的上下文。
-**汇报与抄送必须分开**：完成任务先**直接向用户汇报**（群聊正文 \`@用户 \`，私聊走 user 通道），不经过委派方 role 转达；同一结论再抄送委派方对齐上下文。抄送只让对方看见，不激活、不跑新一轮。
+群聊里 **@ 不再激活任何 agent**：\`text\` 里可以 @ 多位（只 @ 本次确实参与过的人，不要广播），@ 只把消息抄进被 @ 者的上下文。
+**汇报与抄送必须分开**：完成任务先**直接向用户汇报**（群聊 \`text\` 写 \`@用户 \`，私聊走 user 通道），不经过委派方 role 转达；同一结论再抄送委派方对齐上下文。抄送只让对方看见，不激活、不跑新一轮。
 **群聊三种写法**：
-1. **只汇报用户**：正文 \`@用户 \`，不填 \`to\` / \`cc\` / \`mention\` → 一级主楼。
-2. **汇报 + 抄送委派方**：正文同时 \`@用户 \` 与 \`@委派方 \`，填 \`cc:["委派方roleId"]\`，**不填 \`mention\`** → @用户 决定落一级主楼，委派方只同步上下文。
-3. **纯抄送（不面向用户）**：正文 \`@委派方 \`，填 \`cc:["委派方roleId"]\`，不写 \`@用户\`、不填 \`mention\` → 跟随当前有效评论串，没有则一级主楼。
-**要激活某位 role，必须传唯一的 \`mention: "<role id>"\`**，而且目标必须同时被正文 \`@名字 \` 点到；一条消息只能有一个 mention，被 mention 的 agent 会启动一轮。带 mention 的派活开新任务串或续当前任务串；楼层没有显式字段，由 @用户 / mention / 当前串自动路由。用户消息的首个 @ 由宿主自动解析成 mention；agent 发群消息时不要指望 @ 本身能叫醒谁。旧 \`to\` 在 group 里兼容为 mention，新代码请显式写 mention。
+1. **只汇报用户**：\`text\` 写 \`@用户 \`，不填 \`to\` / \`cc\` / \`mention\` → 一级主楼。
+2. **汇报 + 抄送委派方**：\`text\` 同时写 \`@用户 \` 与 \`@委派方 \`，填 \`cc:["委派方roleId"]\`，**不填 \`mention\`** → @用户 决定落一级主楼，委派方只同步上下文。
+3. **纯抄送（不面向用户）**：\`text\` 写 \`@委派方 \`，填 \`cc:["委派方roleId"]\`，不写 \`@用户\`、不填 \`mention\` → 跟随当前有效评论串，没有则一级主楼。
+**要激活某位 role，必须传唯一的 \`mention: "<role id>"\`**，而且目标必须同时被 \`text\` 里的 \`@名字 \` 点到；一条消息只能有一个 mention，被 mention 的 agent 会启动一轮。带 mention 的派活开新任务串或续当前任务串；楼层没有显式字段，由 @用户 / mention / 当前串自动路由。用户消息的首个 @ 由宿主自动解析成 mention；agent 发群消息时不要指望 @ 本身能叫醒谁。旧 \`to\` 在 group 里兼容为 mention，新代码请显式写 mention。
+**内嵌 work 状态**：\`text\` 单独一行写 \`[标题](work: work 名)\`，聊天界面会渲染成两行：标题 / work 名 / 运行状态 / 耗时，以及当前最后一步（思考、execute 标题或输出 \`text\`，单行省略）。后一步会覆盖前一步；同一条消息里重复写多个引用会各占一个块，通常只写一个。
 chat.send 到 work 通道等价于 work.send；到 user 通道不写 to。
 **私聊来源的汇报 + 抄送（仅当任务由其他 role 委派）**：先 user 通道汇报用户；同一结论另发 agent 通道 \`to="委派方roleId"\` + \`silent:true\` 抄送（不写 @用户、不填 mention），不要让委派方替你转达。
 **silent:true 用于进度汇报**：只允许 agent / group 通道，且必须有明确目标 role；消息会落进对方的通道流水与上下文，但**不启动对方一轮**。普通回复不要静默，否则对方不会回应；silent 不能与 mention 同用。
 **deliveryFrom**：传一条消息 id，把那条消息上**此刻的整份结构化交付账快照**（files + sources）随本条消息转发；不是增量，也不与当前账合并。work 账按该 work 会话累计，role 账按当前一轮；Work 交付消息的 id 在来源元信息里，role 转给群聊/私聊时用它，不要自己重抄 files / sources。
 chat.send 成功会回 \`{ ok:true, channel, id, to?, mention? }\`；看到 ok:true 后**禁止重复发送同一条消息**，失败才按 error 修正。
-大段结果（调研原文、日志、JSON）放 \`extra:{title,text}\`，不要塞进正文刷屏；用户可点开查看。`,
+大段结果（调研原文、日志、JSON）放 \`extra:{title,text}\`，不要塞进 \`text\` 刷屏；用户可点开查看。`,
     [
-      a('send', 'api.chat.send({ channel, to?, cc?, mention?, text, messageId?, deliveryFrom?, attachments?, extra?, silent? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 里 to 兼容为唯一 mention；cc 是抄送名单（string[]，可多位，正文必须逐个写 \`@名字 \`，不激活、不跑新一轮）；真正激活某位 role 只用唯一 mention="role id"（只能一个，且正文必须 @ 同一个名字）。**群聊三态**：①只汇报用户=正文 \`@用户 \`，不填 to/cc/mention，落一级主楼；②汇报+抄送委派方=正文 @用户 与 @委派方、填 cc、不填 mention，落一级主楼，委派方只入上下文；③纯抄送=正文 @委派方、填 cc，不写 @用户、不填 mention，跟随当前有效评论串，无串则一级主楼。silent:true 只允许 agent / group，只入上下文、不激活目标，不能带 mention；私聊来源先 user 通道汇报用户，再 agent 通道 to="委派方roleId" + silent:true 抄送；text 是唯一正文，交付物完成通知可用单独一行 `---` 分隔：前面一句话口语化完成通知，后面放具体改动 / 索引名 / 标识符 / 专业细节，界面默认只显示短句、用户可展开；普通对话不要用该分隔；attachments 可带图/文件（moji:static 引用、workspace 路径或 http(s)），最多 4 个。messageId 可引用当前 role 会话里的用户消息（通道抬头 id: 后面的信封 id 也算）；deliveryFrom 按消息 id 转发来源消息上**整份交付账快照**（files + sources，不是增量）：work 账按 work 会话累计，role 账按当前一轮。extra={title?,text,format?} 放正文之外的日志 / 原始结果 / 长 JSON，界面折叠展示。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role，mention 是实际激活的目标。', `await api.chat.send({ channel: "group", mention: "researcher", text: "@调研龟 三条来源已经核过。\\n---\\n1. 官网原文支持……\\n2. 第二条来源与官方口径冲突……\\n3. 引用位置：……", extra: { title: "待查来源", text: sourceList } })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道。@ / cc 只是抄送、不会启动对方，要激活必须带唯一 mention。silent 不是「不发送」：它只入上下文、不激活目标，普通回复别用。`---` 只用于交付物完成通知，不要把普通回答的结论藏进详细段。' }),
+      a('send', 'chat.send({ channel, to?, cc?, mention?, text, messageId?, deliveryFrom?, attachments?, extra?, silent? })', '把对话发到指定通道', 'channel 取 user / agent / work / group；agent 要 to=role id，work 要 to=work 名；group 里 to 兼容为唯一 mention；cc 是抄送名单（string[]，可多位，`text` 必须逐个写 \`@名字 \`，不激活、不跑新一轮）；真正激活某位 role 只用唯一 mention="role id"（只能一个，且 `text` 必须 @ 同一个名字）。**群聊三态**：①只汇报用户=`text` 写 \`@用户 \`，不填 to/cc/mention，落一级主楼；②汇报+抄送委派方=`text` 写 @用户 与 @委派方、填 cc、不填 mention，落一级主楼，委派方只入上下文；③纯抄送=`text` 写 @委派方、填 cc，不写 @用户、不填 mention，跟随当前有效评论串，无串则一级主楼。silent:true 只允许 agent / group，只入上下文、不激活目标，不能带 mention；私聊来源先 user 通道汇报用户，再 agent 通道 to="委派方roleId" + silent:true 抄送；text 是唯一对外内容字段，交付物完成通知可用单独一行 `---` 分隔：前面一句话口语化完成通知，后面放具体改动 / 索引名 / 标识符 / 专业细节，界面默认只显示短句、用户可展开；普通对话不要用该分隔；attachments 可带图/文件：直接传字符串（moji:static 引用、workspace 路径或 http(s) 图片 URL）也接受，或传 `{ image|file, name? }` 对象；外链图片会先下载转存，最多 4 个。messageId 可引用当前 role 会话里出现过的用户消息（通道抬头 id: 后面的信封 id 也算）；界面会在消息上方显示引用条，点击可跳回原消息；deliveryFrom 按消息 id 转发来源消息上**整份交付账快照**（files + sources，不是增量）：work 账按 work 会话累计，role 账按当前一轮。extra={title?,text,format?} 放 `text` 之外的日志 / 原始结果 / 长 JSON，界面折叠展示。返回值至少含 ok；成功时含 channel 与消息 id，to 是实际投递的 role，mention 是实际激活的目标。', `await api.chat.send({ channel: "group", mention: "researcher", text: "@调研龟 三条来源已经核过。\\n---\\n1. 官网原文支持……\\n2. 第二条来源与官方口径冲突……\\n3. 引用位置：……", extra: { title: "待查来源", text: sourceList } })`, { trap: '群聊来源的任务不要走私聊委派；只有用户私聊发起的任务才走 agent 通道。@ / cc 只是抄送、不会启动对方，要激活必须带唯一 mention。silent 不是「不发送」：它只入上下文、不激活目标，普通回复别用。`---` 只用于交付物完成通知，不要把普通回答的结论藏进详细段。' }),
     ],
   ),
 
@@ -625,7 +634,7 @@ chat.send 成功会回 \`{ ok:true, channel, id, to?, mention? }\`；看到 ok:t
 交付写清结论、产物位置、没做成的部分；role 收到后才会对外说。
 一轮结束前没调用 host.send 时，宿主会把最后一段正文自动回传并标记 auto，便于 role 兜底。`,
     [
-      a('send', 'api.host.send({ text, messageId?, extra? })', '把交付发回所属 role', 'text 是给 role 看的结论正文；messageId 可引用 role 发来的任务消息，标明这次回的是哪一条；extra={title?,text,format?} 放原始数据 / 长日志，避免刷屏。接收方固定为创建这个 work 的 role，模型不能改。', `await api.host.send({ text: "调研完成：3 条来源，结论写在 docs/brief.md。", extra: { title: "原始来源", text: rawNotes } })`, { trap: '只发结论与产物位置，把中间日志 / 原文放 extra，不要抄进正文' }),
+      a('send', 'host.send({ text, messageId?, extra? })', '把交付发回所属 role', 'text 是给 role 看的结论正文；messageId 可引用 role 发来的任务消息，标明这次回的是哪一条；extra={title?,text,format?} 放原始数据 / 长日志，避免刷屏。接收方固定为创建这个 work 的 role，模型不能改。', `await api.host.send({ text: "调研完成：3 条来源，结论写在 docs/brief.md。", extra: { title: "原始来源", text: rawNotes } })`, { trap: '只发结论与产物位置，把中间日志 / 原文放 extra，不要抄进正文' }),
     ],
   ),
 
@@ -713,7 +722,7 @@ export function renderGroupHelp(key: string): string {
     '可用 api：',
   ]
   for (const api of items) {
-    lines.push('- ' + api.signature + ' — ' + api.summary)
+    lines.push('- ' + apiDisplaySignature(api) + ' — ' + api.summary)
   }
   if (group.example) {
     lines.push('', '组示例：', group.example)
@@ -739,7 +748,7 @@ export function renderApiHelp(full: string): string {
       (group ? '先 await api.' + group + '.__help() 看这一组有哪些 api。' : '先 await api.__help() 看有哪些组。')
     )
   }
-  const lines = [api.full, '签名：' + api.signature, '', '作用：' + api.summary, '', '用法：' + api.usage]
+  const lines = [api.full, '签名：' + apiDisplaySignature(api), '', '作用：' + api.summary, '', '用法：' + api.usage]
   if (api.params) lines.push('', '参数：' + api.params)
   if (api.returns) lines.push('', '返回：' + api.returns)
   lines.push('', '示例：', api.example)

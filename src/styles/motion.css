@@ -785,3 +785,49 @@
     );
   }
 }
+
+/* ---------- 正文内嵌 work 状态：第二行换步骤时的 3D 翻面 ----------
+ * 一个 17px 高的方形容器，旧面绕 X 轴向后倒 90°，新面从前方立起来。
+ * 只在步骤 key 变化时挂载；同一段流式文字增长不重播，避免每个 token 闪一下。 */
+@keyframes moji-work-inline-roll-out {
+  from {
+    opacity: 1;
+    transform: rotateX(0deg);
+  }
+  to {
+    opacity: 0;
+    transform: rotateX(-90deg);
+  }
+}
+@keyframes moji-work-inline-roll-in {
+  from {
+    opacity: 0;
+    transform: rotateX(90deg);
+  }
+  to {
+    opacity: 1;
+    transform: rotateX(0deg);
+  }
+}
+.moji-work-inline-face {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  transform-origin: 50% 0%;
+  white-space: nowrap;
+}
+.moji-work-inline-face-out {
+  animation: moji-work-inline-roll-out 220ms ease-in both;
+}
+.moji-work-inline-face-in {
+  animation: moji-work-inline-roll-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 不翻转时旧面必须立刻让位，否则会和新面重叠 260ms */
+  .moji-work-inline-face-out {
+    display: none;
+  }
+  .moji-work-inline-face-in {
+    animation: none;
+  }
+}

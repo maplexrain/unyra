@@ -64,6 +64,10 @@ export function setupWebBrowser(): void {
     }
     if (contents.getType() !== 'webview') return
 
+    // 智能体浏览器会常驻在全局 host 里、Dock 收起时也保持后台运行；
+    // 不关掉 Chromium 的后台节流，隐藏后的 waitFor 与页面定时器会被降频。
+    contents.setBackgroundThrottling(false)
+
     // 页签一挂上就开日志采集（Runtime/Log/Network → 环形缓冲），页签销毁时随台账一起清
     startCapture(contents)
 

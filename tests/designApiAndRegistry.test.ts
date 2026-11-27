@@ -1,6 +1,31 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
+
+const memFiles = vi.hoisted(() => new Map<string, string>())
+vi.mock('../src/lib/storage', () => ({
+  userPath: (rel: string) => rel,
+  userAbsPath: (rel: string) => `/mem/${rel}`,
+  listUserDir: async (rel: string) =>
+    rel === 'doc-design'
+      ? [...memFiles.keys()]
+          .filter((key) => key.startsWith('doc-design/'))
+          .map((key) => ({ name: key.slice('doc-design/'.length), dir: false }))
+      : [],
+  readUserText: async (rel: string) => memFiles.get(rel) ?? null,
+  writeUserText: async (rel: string, content: string) => {
+    memFiles.set(rel, content)
+    return true
+  },
+  removeUserPath: async (rel: string) => {
+    const had = memFiles.delete(rel)
+    return had
+  },
+  mkdirUserPath: async () => true,
+  onUserTextWritten: () => () => {},
+}))
+
 import {
+  createDocumentComponentFile,
   listDocumentComponents,
   getDocumentComponent,
   registerDocumentComponent,
@@ -12,11 +37,14 @@ import { buildApi } from '../src/agent/sandbox/api'
 import { WORK_API_PLANES, CONTENT_VOICES } from '../src/agent/agentProfile'
 import { TABS } from '../src/components/settings/tabs'
 import { buildWorkSystem } from '../src/learn/ai/workSystem'
+import { clearExternalModules } from '../src/lib/externalModules'
 import type { SandboxCall, SandboxOptions } from '../src/agent/sandbox/types'
 
 describe('Document Component Registry & Storage', () => {
   beforeEach(() => {
     localStorage.clear()
+    memFiles.clear()
+    clearExternalModules()
   })
 
   it('内置 9 个出版级排版配方组件完整在场', () => {
@@ -46,41 +74,64 @@ describe('Document Component Registry & Storage', () => {
     expect(getDocumentComponent('NonExistent')).toBeUndefined()
   })
 
-  it('支持注册、更新与删除外部自定义组件', () => {
-    // 1. 注册新组件
-    const regRes = registerDocumentComponent({
+  it('支持注册、更新与删除外部自定义组件', async () => {
+    const source = `export default {
+  kind: 'doc-component',
+  id: 'myalert',
+  tag: 'MyAlert',
+  name: '我的警示卡',
+  description: '重要提示卡片',
+  slots: [{ name: 'describe', description: '卡片内容' }],
+  component: ({ slots = {} }) => <div className="alert">{slots.describe}</div>,
+}`
+    // 1. 注册新组件（写 doc-design/doc-component--myalert.tsx）
+    const regRes = await registerDocumentComponent({
       tag: 'MyAlert',
       name: '我的警示卡',
       description: '重要提示卡片',
-      template: '<div class="alert">{{describe}}</div>',
       slots: [{ name: 'describe', description: '卡片内容' }],
+      source,
     })
     expect(regRes.ok).toBe(true)
     expect(regRes.component?.id).toBe('myalert')
+    expect(regRes.file).toContain('doc-design/doc-component--myalert.tsx')
 
-    // 2. 检查持久化
+    // 2. 检查外部清单来自 TSX 文件
     const customList = listDocumentComponents({ source: 'external' })
     expect(customList.length).toBe(1)
     expect(customList[0]!.tag).toBe('MyAlert')
 
     // 3. 更新组件
-    const updateRes = updateDocumentComponent('myalert', {
+    const updateRes = await updateDocumentComponent('myalert', {
       name: '更新后的警示卡',
       description: '更新说明',
+      source: source.replace("name: '我的警示卡'", "name: '更新后的警示卡'"),
     })
     expect(updateRes.ok).toBe(true)
     expect(getDocumentComponent('MyAlert')?.name).toBe('更新后的警示卡')
 
     // 4. 删除组件
-    const delRes = deleteDocumentComponent('myalert')
+    const delRes = await deleteDocumentComponent('myalert')
     expect(delRes.ok).toBe(true)
     expect(getDocumentComponent('MyAlert')).toBeUndefined()
     expect(listDocumentComponents({ source: 'external' }).length).toBe(0)
   })
 
-  it('保护内置组件不被覆盖、修改或删除', () => {
+  it('直接新建外部 TSX 模板文件，不经过表单元数据', async () => {
+    const res = await createDocumentComponentFile()
+    expect(res.ok).toBe(true)
+    expect(res.file).toMatch(/^doc-design\/doc-component--custom-.+\.tsx$/)
+    const src = memFiles.get(res.file!)
+    expect(src).toContain("kind: 'doc-component'")
+    expect(src).toContain('export default')
+    expect(src).toContain('component:')
+    expect(res.component?.source).toBe('external')
+    expect(res.component?.file).toBe(res.file)
+  })
+
+  it('保护内置组件不被覆盖、修改或删除', async () => {
     // 覆盖
-    const regBuiltin = registerDocumentComponent({
+    const regBuiltin = await registerDocumentComponent({
       tag: 'Notice',
       name: '尝试顶替',
       description: 'test',
@@ -89,12 +140,12 @@ describe('Document Component Registry & Storage', () => {
     expect(regBuiltin.error).toContain('不能覆盖内置组件')
 
     // 修改
-    const updateBuiltin = updateDocumentComponent('notice', { name: '新名字' })
+    const updateBuiltin = await updateDocumentComponent('notice', { name: '新名字' })
     expect(updateBuiltin.ok).toBe(false)
     expect(updateBuiltin.error).toContain('内置组件不允许直接修改')
 
     // 删除
-    const delBuiltin = deleteDocumentComponent('notice')
+    const delBuiltin = await deleteDocumentComponent('notice')
     expect(delBuiltin.ok).toBe(false)
     expect(delBuiltin.error).toContain('内置组件不允许删除')
   })
@@ -103,6 +154,8 @@ describe('Document Component Registry & Storage', () => {
 describe('api.design.* Execute 沙箱集成与容错别名', () => {
   beforeEach(() => {
     localStorage.clear()
+    memFiles.clear()
+    clearExternalModules()
   })
 
   it('installDesign 挂载 design.component 与容错别名 design.componet', async () => {
@@ -131,6 +184,7 @@ describe('api.design.* Execute 沙箱集成与容错别名', () => {
     expect(first.name).toBeDefined()
     expect(first.description).toBeDefined()
     expect((first as any).template).toBeUndefined() // 不暴露模板以控制 token
+    expect((first as any).render).toBeUndefined() // 已无字符串渲染回退
 
     // 2. api.design.component.get 获取完整签名
     const getRes = await api.design.component.get('Notice')
@@ -139,13 +193,14 @@ describe('api.design.* Execute 沙箱集成与容错别名', () => {
     expect(getRes.component.slots.length).toBeGreaterThan(0)
     expect(getRes.component.example).toContain('<Notice')
 
-    // 3. api.design.componet.register 注册新组件
+    // 3. api.design.componet.register 注册新组件（写外部 TSX 文件）
     const regRes = await api.design.componet.register({
       tag: 'CustomBadge',
       name: '自定义徽章',
       description: '动态徽章',
     })
     expect(regRes.ok).toBe(true)
+    expect(regRes.file).toContain('doc-design/doc-component--custombadge.tsx')
 
     // 4. api.design.componet.delete
     const delRes = await api.design.componet.delete('custombadge')
@@ -176,7 +231,7 @@ describe('内容生成声部（CONTENT_VOICES）排版指南与 API 持面一致
   it('设置中包含文档设计第一层页签 (doc-design)', () => {
     const docDesignTab = TABS.find((t) => t.key === 'doc-design')
     expect(docDesignTab).toBeDefined()
-    expect(docDesignTab?.label).toBe('文档设计')
+    expect(docDesignTab?.label).toBe('设计')
 
     // 外观中不再包含 doc-design 子页签
     const appearanceTab = TABS.find((t) => t.key === 'appearance')

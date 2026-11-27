@@ -12,7 +12,7 @@
  */
 import type { ReasoningEffort, StreamFn } from '../../ai/types'
 import type { ResolvedProvider } from '../../ai/client'
-import type { AgentEvent, AgentPart, ChannelExtra, ConversationMessage, MessageUsage, WorkBinding, WorkSession, WorkStatus } from '../types'
+import type { AgentEvent, AgentPart, ChannelExtra, ConversationMessage, MessageUsage, WorkSession, WorkStatus } from '../types'
 import type { AgentProfileId } from '../agentProfile'
 import { createExecuteTools } from '../sandbox/execute'
 import type { AskFormPayload } from '../tools'
@@ -52,13 +52,6 @@ export interface WorkManagerDeps {
   buildSystem: (roleId: AgentProfileId) => string
   /** role 会话里按 messageId 找一条用户消息（转发用） */
   roleMessage: (messageId: string) => ConversationMessage | null
-  /**
-   * 把一枚 work 状态挂到某个通道消息上（work.send 的 bindMessageId）。
-   * 找不到消息时返回 error；宿主自己知道消息住在哪个通道 / 哪段会话。
-   */
-  bindWorkMessage?: (messageId: string, binding: WorkBinding) => { ok: true } | { ok: false; error: string }
-  /** work 状态变化时原地 patch 上面那条消息；消息已被删 / 换会话时安静跳过 */
-  updateWorkBinding?: (messageId: string, workId: string, patch: Partial<WorkBinding>) => void
   /** 把一条 outbound work 通道消息记到 role 的通道流水 */
   appendOutbound: (work: WorkSession, text: string, meta: { quoteMessageId?: string; auto?: boolean; extra?: ChannelExtra; delivery?: DeliveryRecord }) => void
   /** host.send / 自动兜底：把交付写回 role（宿主负责写通道 + 注入/起轮） */
@@ -103,8 +96,6 @@ interface RunHandle {
 
 export function createWorkManager(deps: WorkManagerDeps): WorkManager {
   const running = new Map<string, RunHandle>()
-  /** workId → 绑定显示在哪些通道消息上（同一个 work 的不同任务消息可以各挂一条状态） */
-  const bindings = new Map<string, Set<string>>()
   let turn: WorkTurnConfig | null = null
 
   const save = (next: WorkSession): void => {
@@ -118,13 +109,6 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
 
   const patch = (id: string, fn: (w: WorkSession) => WorkSession): void => {
     deps.setWorks((prev) => prev.map((w) => (w.id === id ? fn(w) : w)))
-  }
-
-  /** 把最新状态同步到所有绑定的通道消息；没有绑定就什么都不做 */
-  const syncBinding = (workId: string, patch: Partial<WorkBinding>): void => {
-    const ids = bindings.get(workId)
-    if (!ids?.size) return
-    for (const messageId of ids) deps.updateWorkBinding?.(messageId, workId, patch)
   }
 
   const appendMessage = (id: string, message: ConversationMessage): void => {
@@ -246,7 +230,6 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
     const cfg = turn
     if (!cfg) {
       patch(work.id, (w) => ({ ...w, status: 'error', lastIssue: '没有可用的轮次配置（模型/沙箱未就绪）' }))
-      syncBinding(work.id, { status: 'error', startedAt: undefined, lastIssue: '没有可用的轮次配置（模型/沙箱未就绪）' })
       reportAbnormal(work, '没有可用的轮次配置（模型/沙箱未就绪）', 'unavailable')
       return
     }
@@ -261,7 +244,6 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
     }
     running.set(work.id, handle)
     patch(work.id, (w) => ({ ...w, status: 'running', runningSince: handle.startedAt, lastActiveAt: handle.startedAt }))
-    syncBinding(work.id, { status: 'running', startedAt: handle.startedAt, lastActiveAt: handle.startedAt })
 
     void drive(cfg, work, handle)
   }
@@ -293,7 +275,6 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
               ...w,
               execTrace: [...w.execTrace, { at: Date.now(), title }].slice(-30),
             }))
-            syncBinding(work.id, { current: title, lastActiveAt: Date.now() })
           }
           deps.onEvent?.(work.id, handle.runId, e)
         },
@@ -358,15 +339,6 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
       ...(outcome.delivery && !handle.delivered ? { lastDelivery: outcome.delivery } : {}),
       ...(issue ? { lastIssue: issue } : {}),
     }))
-    syncBinding(work.id, {
-      status,
-      runs: nextRuns,
-      runtimeMs: nextRuntimeMs,
-      startedAt: undefined,
-      lastActiveAt: Date.now(),
-      current: undefined,
-      ...(issue ? { lastIssue: issue } : {}),
-    })
     if (outcome.parts.length) flushParts(work.id, outcome.parts, outcome.usage ?? undefined)
     /*
      * 收口时还排着的注入没有机会再进跳边界：按「先 assistant 收口、再 user 任务」的顺序
@@ -436,7 +408,6 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
       if (!handle) return { ok: false, error: '「' + w.name + '」当前没有在跑' }
       handle.stopRequested = true
       handle.ctrl.abort()
-      syncBinding(w.id, { status: 'stopped', startedAt: undefined, lastActiveAt: Date.now() })
       return { ok: true, name: w.name, status: 'stopped' }
     },
 
@@ -476,8 +447,6 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
         handle.stopRequested = true
         handle.ctrl.abort()
       }
-      syncBinding(w.id, { status: 'stopped', startedAt: undefined, lastIssue: 'work 已被删除' })
-      bindings.delete(w.id)
       deps.setWorks((prev) => prev.filter((x) => x.id !== w.id))
       running.delete(w.id)
       return { ok: true, name: w.name, status: 'stopped' }
@@ -488,11 +457,7 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
       if (!w) return { ok: false, error: '没有叫「' + input.name + '」的 work；先 work.list()。' }
       const text = (input.text ?? '').trim()
       const messageId = (input.messageId ?? '').trim()
-      const bindMessageId = (input.bindMessageId ?? '').trim()
       if (!text && !messageId) return { ok: false, error: 'work.send 需要 text 或 messageId' }
-      if (bindMessageId && !deps.bindWorkMessage) {
-        return { ok: false, error: '当前宿主不支持 work 消息绑定' }
-      }
       let quoted: ConversationMessage | null = null
       if (messageId) {
         quoted = deps.roleMessage(messageId)
@@ -520,24 +485,6 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
         ...(input.files?.length ? { files: input.files } : {}),
       }
       const handle = running.get(w.id)
-      if (bindMessageId) {
-        const now = Date.now()
-        const r = deps.bindWorkMessage!(bindMessageId, {
-          workId: w.id,
-          workName: w.name,
-          roleId: deps.roleId,
-          status: 'running',
-          runs: w.runs,
-          runtimeMs: w.runtimeMs,
-          startedAt: handle?.startedAt ?? now,
-          lastActiveAt: now,
-          ...(handle ? {} : { current: '准备启动' }),
-        })
-        if (!r.ok) return { ok: false, error: r.error }
-        const ids = bindings.get(w.id) ?? new Set<string>()
-        ids.add(bindMessageId)
-        bindings.set(w.id, ids)
-      }
       deps.appendOutbound(w, body, { ...(quoted ? { quoteMessageId: quoted.id } : {}) })
       if (handle) {
         // 运行中：任务消息不能先落库，和注入一起排队；到跳边界 flush 完当前 parts 再 append。
@@ -584,7 +531,6 @@ export function createWorkManager(deps: WorkManagerDeps): WorkManager {
           lastIssue: '用户终止：' + text,
         }))
       }
-      syncBinding(w.id, { status: 'stopped', startedAt: undefined, lastActiveAt: Date.now(), lastIssue: '用户终止：' + text })
       const latest = deps.getWorks().find((x) => x.id === w.id) ?? w
       deps.deliverToRole(
         latest,

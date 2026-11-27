@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import TabButton from './TabButton'
 import {
+  BookOpen,
   Brain,
   Bot,
   Compass,
@@ -32,6 +33,7 @@ import { ToolsTab } from './agent-settings/ToolsTab'
 import { PermissionsTab } from './agent-settings/PermissionsTab'
 import { MemoryTab } from './agent-settings/MemoryTab'
 import { ExternalAgentsPanel } from './agent-settings/ExternalAgentsPanel'
+import { ApiDocsTab } from './agent-settings/ApiDocsTab'
 import ConfirmDialog from './ConfirmDialog'
 import DevUnlock from './DevUnlock'
 import { pane } from './Pane'
@@ -84,7 +86,7 @@ interface Props {
   sectionSwitch?: ReactNode
 }
 
-type TabKey = 'chat' | 'strategy' | 'memory' | 'skills' | 'mcp' | 'serve' | 'external' | 'tools' | 'permissions' | 'flow' | 'dev'
+type TabKey = 'chat' | 'strategy' | 'memory' | 'skills' | 'mcp' | 'serve' | 'external' | 'tools' | 'api-docs' | 'permissions' | 'flow' | 'dev'
 
 const TAB_KEY = 'moji:agent-settings:tab'
 
@@ -97,6 +99,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof Sparkles }> = [
   { key: 'serve', label: '对外 MCP 服务', icon: Radio },
   { key: 'external', label: '外部智能体', icon: Bot },
   { key: 'tools', label: '工具与上下文', icon: Wrench },
+  { key: 'api-docs', label: 'Execute API', icon: BookOpen },
   { key: 'permissions', label: '权限设置', icon: FolderCheck },
   { key: 'flow', label: '工作流', icon: Workflow },
 ]
@@ -119,6 +122,7 @@ const savedTab = (): TabKey => {
       v === 'serve' ||
       v === 'external' ||
       v === 'tools' ||
+      v === 'api-docs' ||
       v === 'permissions' ||
       v === 'flow'
     )
@@ -282,6 +286,8 @@ export default function AgentSettingsPanel({
                             ? t('对外 MCP 服务')
                             : tab === 'tools'
                           ? t('工具与上下文管理')
+                          : tab === 'api-docs'
+                            ? t('Execute API 文档')
                           : tab === 'permissions'
                             ? t('权限设置与安全沙箱')
                             : tab === 'memory'
@@ -292,7 +298,7 @@ export default function AgentSettingsPanel({
         </header>
 
         {/* 内容视图路由 */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className={tab === 'api-docs' ? 'flex-1 min-h-0 overflow-hidden' : 'flex-1 min-h-0 overflow-y-auto'}>
           {tab === 'chat' ? (
             <ChatTab settings={settings} hasKey={hasKey} model={model} onChange={onChange} />
           ) : tab === 'strategy' ? (
@@ -331,6 +337,8 @@ export default function AgentSettingsPanel({
               onOpenContextDebugger={onOpenContextDebugger}
               onOpenContextTrace={onOpenContextTrace}
             />
+          ) : tab === 'api-docs' ? (
+            <ApiDocsTab />
           ) : tab === 'permissions' ? (
             <PermissionsTab
               settings={settings}

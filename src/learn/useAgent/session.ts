@@ -5,7 +5,7 @@
  * 交付通过 Work 通道回到 role（见 learn/roleWork/dispatch）。
  */
 import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react'
-import type { AgentEvent, AgentPart, Conversation, WorkBinding } from '../../agent/types'
+import type { AgentEvent, AgentPart, Conversation } from '../../agent/types'
 import { agentNameOf, profileOf } from '../../agent/agentProfile'
 import { loadAgentSettings } from '../../agent/settings'
 import { applyEvent } from '../agent/events'
@@ -18,7 +18,6 @@ import { conversationMessageById, inboundEnvelope, outboundEnvelope, peerOf } fr
 import { deliverInbound, hasRoleWorkDispatcher } from '../roleWork/dispatch'
 import { roleOfConversation } from '../roleWork/roles'
 import { freeConversationById, mutateFreeConversation } from '../freeChat'
-import { getGroupChatMessages, patchGroupMessage } from '../groupChat'
 
 export interface WorkRunSlot {
   conversationId: string
@@ -72,60 +71,6 @@ export function useAgentSession(deps: {
     [getLatest, persist],
   )
 
-  /**
-   * work.send 的「把状态挂到某条通道消息上」宿主实现。
-   *
-   * 消息可能住在群聊账本，也可能住在某段 role 会话的 channels。群聊按 goalId
-   * 校验，避免把 A 目标的 work 挂到 B 目标的群消息上；role 通道只认本会话。
-   */
-  const bindWorkMessage = useCallback(
-    (
-      conversationId: string,
-      goalId: string | undefined,
-      messageId: string,
-      binding: WorkBinding,
-    ): { ok: true } | { ok: false; error: string } => {
-      const group = getGroupChatMessages().find((m) => m.id === messageId)
-      if (group && (!goalId || !group.goalId || group.goalId === goalId)) {
-        patchGroupMessage(messageId, { work: binding })
-        return { ok: true }
-      }
-      const cur = conversationById(getLatest(), conversationId)
-      const hit = (cur?.channels ?? []).find((m) => m.id === messageId)
-      if (hit && cur) {
-        persist({
-          ...cur,
-          channels: (cur.channels ?? []).map((m) => (m.id === messageId ? { ...m, work: binding } : m)),
-          updatedAt: Date.now(),
-        })
-        return { ok: true }
-      }
-      return { ok: false, error: '当前通道里找不到消息「' + messageId + '」；bindMessageId 只能指向这段会话或同目标群聊里的消息。' }
-    },
-    [getLatest, persist],
-  )
-
-  const updateWorkBinding = useCallback(
-    (conversationId: string, messageId: string, workId: string, patch: Partial<WorkBinding>): void => {
-      const group = getGroupChatMessages().find((m) => m.id === messageId && m.work?.workId === workId)
-      if (group?.work) {
-        patchGroupMessage(messageId, { work: { ...group.work, ...patch } })
-        return
-      }
-      const cur = conversationById(getLatest(), conversationId)
-      const hit = (cur?.channels ?? []).find((m) => m.id === messageId && m.work?.workId === workId)
-      if (!hit?.work || !cur) return
-      persist({
-        ...cur,
-        channels: (cur.channels ?? []).map((m) =>
-          m.id === messageId && m.work?.workId === workId ? { ...m, work: { ...m.work, ...patch } } : m,
-        ),
-        updatedAt: Date.now(),
-      })
-    },
-    [getLatest, persist],
-  )
-
   const getOrCreateWorkManager = useCallback(
     (conversationId: string): WorkManager => {
       let m = workManagersRef.current.get(conversationId)
@@ -148,10 +93,6 @@ export function useAgentSession(deps: {
           buildSystem: (role) => buildPromptFileSystem(role, 'work', loadAgentSettings().promptFiles),
           roleMessage: (messageId) =>
             conversationMessageById(conversationById(getLatest(), conversationId)?.messages ?? [], messageId),
-          bindWorkMessage: (messageId, binding) =>
-            bindWorkMessage(conversationId, stored?.goalId, messageId, binding),
-          updateWorkBinding: (messageId, workId, patch) =>
-            updateWorkBinding(conversationId, messageId, workId, patch),
           appendOutbound: (work, text, meta) => {
             const cur = conversationById(getLatest(), conversationId)
             if (!cur) return
@@ -211,7 +152,7 @@ export function useAgentSession(deps: {
       }
       return m
     },
-    [getLatest, persist, workManagersRef, setWorkRuns, bindWorkMessage, updateWorkBinding],
+    [getLatest, persist, workManagersRef, setWorkRuns],
   )
 
   /**
@@ -243,29 +184,6 @@ export function useAgentSession(deps: {
           },
           buildSystem: (role) => buildPromptFileSystem(role, 'work', loadAgentSettings().promptFiles),
           roleMessage: (messageId) => conversationMessageById(conv()?.messages ?? [], messageId),
-          bindWorkMessage: (messageId, binding) => {
-            const hit = (conv()?.channels ?? []).find((m) => m.id === messageId)
-            if (!hit) return { ok: false, error: '自由对话里找不到消息「' + messageId + '」' }
-            mutateFreeConversation(conversationId, (c) => ({
-              ...c,
-              channels: (c.channels ?? []).map((m) => (m.id === messageId ? { ...m, work: binding } : m)),
-              updatedAt: Date.now(),
-            }))
-            return { ok: true }
-          },
-          updateWorkBinding: (messageId, workId, patch) => {
-            mutateFreeConversation(conversationId, (c) => {
-              const hit = (c.channels ?? []).find((m) => m.id === messageId && m.work?.workId === workId)
-              if (!hit?.work) return c
-              return {
-                ...c,
-                channels: (c.channels ?? []).map((m) =>
-                  m.id === messageId && m.work?.workId === workId ? { ...m, work: { ...m.work, ...patch } } : m,
-                ),
-                updatedAt: Date.now(),
-              }
-            })
-          },
           appendOutbound: (work, text, meta) => {
             mutateFreeConversation(conversationId, (c) => {
               const envelope = outboundEnvelope({

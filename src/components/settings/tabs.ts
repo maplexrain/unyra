@@ -88,7 +88,7 @@ const ALL_TABS: SettingsTabItem[] = [
   },
   {
     key: 'doc-design',
-    label: '文档设计',
+    label: '设计',
     icon: Layers,
   },
   // 「输入」= 键盘与麦克风：改键、语音转文字。它们都是「怎么把话喂进这个应用」，

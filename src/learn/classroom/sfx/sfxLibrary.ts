@@ -3,9 +3,10 @@
  *
  * 审美原则：纸墨触感 + 木质讲堂声学 + 克制温和的音乐性。
  * 每个配方只描述「这个声音怎么长出来」；音量、混响、去重、开关统一由 sfxEngine 管。
- * 元数据（name / label / category / mood / use）供 api.classroom.sounds() 与展示页试听共用。
+ * 元数据（name / label / category / mood / use）供 api.classroom.sounds() 使用。
  */
 import type { SfxVoice } from './sfxEngine'
+import { listExternalClassroomSounds } from '../registry'
 
 export type SfxCategory = 'transition' | 'accent' | 'rhythm' | 'feedback'
 
@@ -15,7 +16,7 @@ export interface SfxRecipe {
   category: SfxCategory
   /** 听感一句话 */
   mood: string
-  /** 推荐用法——提示词与展示页共用 */
+  /** 推荐用法——给提示词与组件作者看的 */
   use: string
   /** 时长型音效的默认时长（毫秒） */
   defaultDuration?: number
@@ -28,6 +29,9 @@ export interface SfxMeta {
   category: SfxCategory
   mood: string
   use: string
+  /** 外部 TSX 音效的源文件（相对当前用户）；内置音效没有 */
+  file?: string
+  source?: 'builtin' | 'external'
 }
 
 interface ToneOpts {
@@ -52,6 +56,19 @@ interface NoiseOpts {
   f2?: number
   q?: number
   wet?: number
+}
+
+/** 外部音效文件拿到的合成原语：tone / noise 已绑定当前声部 */
+export interface SfxKit {
+  tone(opts: unknown): void
+  noise(opts: unknown): void
+}
+
+export function createSfxKit(v: SfxVoice): SfxKit {
+  return {
+    tone: (opts) => tone(v, opts as ToneOpts),
+    noise: (opts) => noise(v, opts as NoiseOpts),
+  }
 }
 
 function envelope(g: GainNode, t: number, peak: number, attack: number, decay: number): void {
@@ -401,7 +418,7 @@ const recipes: SfxRecipe[] = [
 
 export const SFX_RECIPES: Record<string, SfxRecipe> = Object.fromEntries(recipes.map((r) => [r.name, r]))
 
-/** 音效清单（纯 JSON，供 api.classroom.sounds() 与展示页使用） */
+/** 音效清单（纯 JSON，供 api.classroom.sounds() 使用；内置 + 外部 TSX） */
 export function listSfx(filter?: { category?: SfxCategory; query?: string }): SfxMeta[] {
   let list = recipes
   if (filter?.category) {
@@ -417,5 +434,27 @@ export function listSfx(filter?: { category?: SfxCategory; query?: string }): Sf
         r.use.toLowerCase().includes(q),
     )
   }
-  return list.map(({ name, label, category, mood, use }) => ({ name, label, category, mood, use }))
+  const builtin = list.map(({ name, label, category, mood, use }) => ({
+    name,
+    label,
+    category,
+    mood,
+    use,
+    source: 'builtin' as const,
+  }))
+  const external = listExternalClassroomSounds({ query: filter?.query }).filter(
+    (sound) => !filter?.category || sound.category === filter.category,
+  )
+  return [
+    ...builtin,
+    ...external.map((sound) => ({
+      name: sound.name,
+      label: sound.label,
+      category: sound.category,
+      mood: sound.mood,
+      use: sound.use,
+      file: sound.file,
+      source: 'external' as const,
+    })),
+  ]
 }

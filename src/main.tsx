@@ -6,9 +6,11 @@ import App from './App.tsx'
 import BootError from './components/BootError'
 import ExamWindow from './components/exam/ExamWindow'
 import TraceWindow from './components/agent/TraceWindow'
+import DevConsoleWindow from './components/developer/DevConsoleWindow'
 import ScreenshotApp from './components/tools/ScreenshotApp'
 import PinWindowApp from './components/tools/PinWindowApp'
 import { bootApp } from './lib/boot'
+import { loadUiLocale } from './lib/uiLocale'
 import { reportStartupMarks, startupMark } from './lib/startupTrace'
 import { allProviderBaseUrls } from './ai/settings'
 import { syncProxyHosts } from './ai/http'
@@ -55,62 +57,78 @@ const params = new URLSearchParams(location.search)
 const inExamWindow = params.get('examWindow') === '1'
 /** 上下文轨迹窗口（第三个 BrowserWindow，见 electron/app/traceWindow）：纯只读的会话轨迹 */
 const inTraceWindow = params.get('contextTrace') === '1'
+/** 开发者控制台窗口（见 electron/app/devConsoleWindow）：主进程 + 主窗口渲染进程日志 */
+const inDevConsole = params.get('devConsole') === '1'
 /** 系统全屏截图窗口（见 electron/app/screenshotWindow） */
 const inScreenshotWindow = params.get('screenshotWindow') === '1'
 /** 系统独立置顶贴图窗口（见 electron/app/pinWindow） */
 const pinWindowId = params.get('pinWindow')
 
-startupMark('r:boot-start')
-bootApp()
-  .then((boot) => {
-    startupMark('r:boot-done')
-    if (inExamWindow) {
-      root.render(
-        <StrictMode>
-          <ExamWindow />
-        </StrictMode>,
-      )
-      return
-    }
-    if (inTraceWindow) {
-      // 轨迹窗口同样是「长得一样、能收发消息」就够：不读学习数据，会话数据全靠主窗口推
-      root.render(
-        <StrictMode>
-          <TraceWindow />
-        </StrictMode>,
-      )
-      return
-    }
-    if (inScreenshotWindow) {
-      root.render(
-        <StrictMode>
-          <ScreenshotApp />
-        </StrictMode>,
-      )
-      return
-    }
-    if (pinWindowId) {
-      root.render(
-        <StrictMode>
-          <PinWindowApp pinId={pinWindowId} />
-        </StrictMode>,
-      )
-      return
-    }
-    // 提供商地址同步给主进程：llm-proxy 只放行白名单内的 host，
-    // 名单晚到一步就会让启动瞬间的请求（如拉模型列表）吃 403。
-    // 此刻当前用户的配置已经读进来了，直接用它算。
-    void syncProxyHosts(allProviderBaseUrls())
-
+/** 开发者控制台不 bootApp：不读用户数据、不装插件，只订阅主进程的日志缓冲 */
+if (inDevConsole) {
+  // 控制台固定深色；预览里的 WorkInline 等组件吃语义色，先把根主题设成深色再渲染
+  document.documentElement.dataset.theme = 'dark'
+  // 只读全局语言偏好：控制台不读用户数据，但标题和空态文案应与主窗口同一语言
+  void loadUiLocale().then(() => {
     root.render(
       <StrictMode>
-        <App boot={boot} />
+        <DevConsoleWindow />
       </StrictMode>,
     )
-    startupMark('r:render-called')
-    reportStartupMarks()
   })
-  .catch((err: unknown) => {
-    console.error('[boot] 启动失败：', err)
-    root.render(<BootError error={err} />)
-  })
+} else {
+  startupMark('r:boot-start')
+  bootApp()
+    .then((boot) => {
+      startupMark('r:boot-done')
+      if (inExamWindow) {
+        root.render(
+          <StrictMode>
+            <ExamWindow />
+          </StrictMode>,
+        )
+        return
+      }
+      if (inTraceWindow) {
+        // 轨迹窗口同样是「长得一样、能收发消息」就够：不读学习数据，会话数据全靠主窗口推
+        root.render(
+          <StrictMode>
+            <TraceWindow />
+          </StrictMode>,
+        )
+        return
+      }
+      if (inScreenshotWindow) {
+        root.render(
+          <StrictMode>
+            <ScreenshotApp />
+          </StrictMode>,
+        )
+        return
+      }
+      if (pinWindowId) {
+        root.render(
+          <StrictMode>
+            <PinWindowApp pinId={pinWindowId} />
+          </StrictMode>,
+        )
+        return
+      }
+      // 提供商地址同步给主进程：llm-proxy 只放行白名单内的 host，
+      // 名单晚到一步就会让启动瞬间的请求（如拉模型列表）吃 403。
+      // 此刻当前用户的配置已经读进来了，直接用它算。
+      void syncProxyHosts(allProviderBaseUrls())
+
+      root.render(
+        <StrictMode>
+          <App boot={boot} />
+        </StrictMode>,
+      )
+      startupMark('r:render-called')
+      reportStartupMarks()
+    })
+    .catch((err: unknown) => {
+      console.error('[boot] 启动失败：', err)
+      root.render(<BootError error={err} />)
+    })
+}

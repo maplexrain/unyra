@@ -272,17 +272,18 @@ export async function runFreeTurn(io: {
   }
   const freeSandbox: SandboxOptions = {
     ...freeWorkBase,
-    // role 层单会话：联网 / 日程不在 role 面，调用会被 apiAllow 拒绝；这里连实现都不注入
-    web: undefined,
+    // role 层单会话：日程不在 role 面，调用会被 apiAllow 拒绝；这里连实现都不注入
+    web: freeWorkBase.web,
     schedule: undefined,
-    // role 的固定面：tmp / work / chat / agent + compact
+    // role 的固定面：tmp / web / work / chat / agent + compact / fetch
     apiAllow: [...FREE_AGENT_GROUPS, ...FREE_AGENT_TOP_LEVEL],
     apiBrief:
       'api.work.list() / api.work.create({ name? }) / api.work.status(name)：管理自己的 work；\n' +
       'api.work.send({ name, text })：把任务交给 work，调用立即返回；\n' +
       'api.agent.list()：查看已注册 agent 的 id / 名称 / 简介；\n' +
+      'api.web.search(query) / api.fetch(url)：联网检索与读网页原文；\n' +
       'api.chat.send({ channel: \'user\'|\'agent\'|\'work\', to?, text })：对外发消息。\n' +
-      '联网检索、网页抓取、日程读写都只在 work 面：需要就 create/send 一个 work。',
+      '日程读写只在 work 面：需要就 create/send 一个 work。',
     agent: { list: () => listRegisteredAgents(loadAgentSettings()) },
     signal: ctrl.signal,
   }

@@ -139,8 +139,8 @@ export interface SandboxOptions {
    */
   ui?: UiOps
   /**
-   * 内置浏览器（browser.*，见 learn/web/browserOps）：界面上开着的网页页签的
-   * 打开、管理、页面读取与操作、截图。依赖界面注入（webview 元素在渲染层），
+   * 智能体后台浏览器（browser.*，见 learn/web/browserOps）：自己的会话池、页面读取与操作。
+   * 会话在全局 host 里运行，不占文档区页签；依赖界面注入（webview 元素在渲染层），
    * 未注入就没有这一组。
    */
   browser?: BrowserOps

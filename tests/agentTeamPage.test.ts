@@ -395,6 +395,34 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     host.remove()
   })
 
+  it('AgentRosterSidebar 头像右上角为有未读消息的声部显示红点', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(AgentRosterSidebar, {
+          mode: 'dispatcher',
+          onSelectMode: () => {},
+          activeGoalTitle: null,
+          voiceStats: {
+            tutor: { running: false, hasAsk: false, unread: 2, count: 1 },
+            dispatcher: { running: false, hasAsk: false, unread: 0, count: 1 },
+          },
+        }),
+      )
+    })
+    const dot = host.querySelector('[data-agent-unread="tutor"]')
+    expect(dot).not.toBeNull()
+    expect(dot?.className).toContain('bg-rose-500')
+    expect(host.querySelector('[data-agent-unread="dispatcher"]')).toBeNull()
+
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
   it('AgentRosterSidebar 顶部栏形态（variant=top）：横排声部按钮 + 当前声部近况，无折叠语义', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
@@ -798,15 +826,15 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     expect(host.textContent).toContain('固定 · 恒开放')
     expect(host.textContent).toContain('固定组')
     expect(host.textContent).toContain('非固定组')
-    expect(host.textContent).toContain('role 层不直接持有领域能力')
+    expect(host.textContent).toContain('role 层不直接持有其他领域能力')
     expect([...host.querySelectorAll<HTMLButtonElement>('button[aria-label^="移除"]')]).toHaveLength(0)
     expect(host.querySelector('[data-api-add]')).toBeNull()
-    // role 的固定面只有 tmp / work / chat + compact（help 恒在），领域组一律不在
+    // role 的固定面是 tmp / web / work / chat / agent / delivery + see / ask / fetch / compact，其他领域组一律不在
     const codeKeys = [...host.querySelectorAll('[data-api-section] code')].map((c) => c.textContent)
-    for (const key of ['api.tmp', 'api.work', 'api.chat', 'api.compact', 'api.help']) {
+    for (const key of ['api.tmp', 'api.web', 'api.fetch', 'api.work', 'api.chat', 'api.compact', 'api.help']) {
       expect(codeKeys.filter((k) => k === key)).toHaveLength(1)
     }
-    for (const key of ['api.node', 'api.wait', 'api.exam', 'api.classroom', 'api.web', 'api.browser']) {
+    for (const key of ['api.node', 'api.wait', 'api.exam', 'api.classroom', 'api.browser']) {
       expect(codeKeys.some((k) => k === key)).toBe(false)
     }
     // 工作层只读：固定面与按 role 派生面都直接来自架构，没有任何增删入口
@@ -971,7 +999,7 @@ describe('AgentSettingsView 智能体独立设置页', () => {
     host.remove()
   })
 
-  it('仅聊天：api 只有联网与日程两组，工作流节显示通道缺失说明', () => {
+  it('仅聊天：api 固定面含联网，工作流节显示通道缺失说明', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)

@@ -1,5 +1,5 @@
 /**
- * 六位团队 role 的系统提示词（除导师外）与按 role 的统一入口（buildVoiceSystem）。
+ * 团队 role 的系统提示词（除导师外）与按 role 的统一入口（buildVoiceSystem）。
  * 导师的提示词在 teacherSystem（buildTeacherSystem）。
  *
  * 结构纪律与导师同源：**共同前缀（SHARED_AGENT_PREFIX，P0）→ 共用排版与视觉规范（仅内容
@@ -23,27 +23,27 @@ function buildVoice(voice: AgentVoice, opts: VoiceSystemOpts): string {
   return joinPromptSections(getAgentPromptSections(voice, opts))
 }
 
-/** 经理龟（dispatcher）：接收需求 → 用 chat.send / work 派单 → 跟踪 → 交付（工作流统一经它路由） */
+/** 调度员（dispatcher）：接收需求 → 用 chat.send / work 派单 → 跟踪 → 交付（工作流统一经它路由） */
 export function buildDispatcherSystem(opts: VoiceSystemOpts = {}): string {
   return buildVoice('dispatcher', opts)
 }
 
-/** 做题龟（examiner）：出卷 / 判分与错题讲解 */
+/** 出卷与阅卷角色（examiner）：出卷 / 判分与错题讲解 */
 export function buildExaminerSystem(opts: VoiceSystemOpts = {}): string {
   return buildVoice('examiner', opts)
 }
 
-/** 设计龟（designer）：互动课堂课件 / 超级实验室（课堂设计师） */
+/** 课堂与实验室设计角色（designer）：互动课堂课件 / 超级实验室（课堂设计师） */
 export function buildDesignerSystem(opts: VoiceSystemOpts = {}): string {
   return buildVoice('designer', opts)
 }
 
-/** 调研龟（researcher）：联网调研 / 内置浏览器实操（为团队其他声部提供网络消息的调研） */
+/** 调研角色（researcher）：联网调研 / 内置浏览器实操（为团队其他声部提供网络消息的调研） */
 export function buildResearcherSystem(opts: VoiceSystemOpts = {}): string {
   return buildVoice('researcher', opts)
 }
 
-/** 维修龟（fixer）：修复问题（目前仅解析失败的函数图像语法，用户主动触发） */
+/** 内容修复角色（fixer）：修复问题（目前仅解析失败的函数图像语法，用户主动触发） */
 export function buildFixerSystem(opts: VoiceSystemOpts = {}): string {
   return buildVoice('fixer', opts)
 }

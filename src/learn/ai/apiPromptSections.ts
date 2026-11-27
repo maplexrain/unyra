@@ -1,5 +1,6 @@
 /**
- * 一位 role 的 **api 提示词**：role 层只有固定执行基座（tmp / work / chat / agent + compact），
+ * 一位 role 的 **api 提示词**：role 层只有固定执行基座（tmp / web / work / chat / agent / delivery
+ * + see / ask / fetch / compact），
  * 另附一段 work 能力摘要（按 WORK_API_PLANES 派生，只用于判断该派什么活）。
  *
  * 领域 API、语法与工作流规程全部属于 work 层（见 workSystem）：role 只需要知道
@@ -14,7 +15,7 @@ import { apiDocKeysFor, workApiDocKeysFor, NODE_PATH_NOTE } from './agentSharedP
 import { CHIP_DELIVERY_GUIDE, DELIVERY_LEDGER_GUIDE } from './guides'
 
 export interface ApiPromptParts {
-  /** 固定组速查（六位执行声部逐字节一致，紧跟共同基础前缀） */
+  /** 固定组速查（所有执行声部逐字节一致，紧跟共同基础前缀） */
   fixed: string
   /** 非固定组速查 + 面注记；没有专属面时为空串 */
   variable: string
@@ -36,7 +37,7 @@ export function apiPromptPartsFor(voice: AgentVoice): ApiPromptParts {
   return { fixed: tailText ? doc.fixed + '\n\n' + tailText : doc.fixed, variable: '' }
 }
 
-/** work 层的 api 两段：固定组 host/tmp + 按 role 派生的非固定组 */
+/** work 层的 api 两段：固定组 host/tmp/web + 按 role 派生的非固定组 */
 export function workApiPromptPartsFor(role: AgentProfileId): ApiPromptParts {
   const allow = workApiDocKeysFor(role)
   const doc = renderSplitApiDocumentation(allow, WORK_FIXED_PLANE, { variableConcise: true })
@@ -85,7 +86,7 @@ export function workDelegationSectionFor(role: AgentProfileId): string {
     '',
     '方法由 work 用 `api.<组>.__help()` 现查；你只判断该不该派、派给哪个 work。',
     '',
-    '**这些 api 不在 role 的沙箱里**：role 只有 `tmp / work / chat / agent` + `compact` + `help`，直接调用会被判「没有这个 api」；你只能 `api.work.create` / `api.work.send` 派，不能直接调。work 再用 `api.host.send` 交回。',
+    '**这些领域 api 不在 role 的沙箱里**：role 只有 `tmp / web / work / chat / agent / delivery` + 顶层 `see / fetch / ask / compact` + `help`；固定联网走 `api.web.*` / `api.fetch`，其他领域**直接调用领域方法会被判「没有这个 api」**，只能 `api.work.create` / `api.work.send` 派，不能直接调。work 再用 `api.host.send` 交回。',
   ]
     .filter((part) => part !== '')
     .join('\n')

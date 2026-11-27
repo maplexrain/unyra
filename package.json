@@ -69,6 +69,7 @@
     "mermaid": "^12.2.0",
     "pdfjs-dist": "^6.4.299",
     "pinyin-match": "^1.2.10",
+    "prettier": "^3.10.1",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

@@ -74,7 +74,7 @@ export type { UserInfoOps } from './types/userInfo'
 /* ---------- ui：界面操作 ---------- */
 export type { UiPointRequest, UiScrollRequest, UiCaptureResult, UiOps } from './types/ui'
 
-/* ---------- browser：内置浏览器 ---------- */
+/* ---------- browser：智能体后台浏览器 ---------- */
 export type {
   BrowserTabInfo,
   BrowserTarget,

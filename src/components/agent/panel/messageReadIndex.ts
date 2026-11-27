@@ -9,7 +9,7 @@
  * 通道名由调用方拼：群聊 `group:{goalId}`、评论串 `group:{goalId}:thread:{rootId}`、
  * 私聊 `role:{conversationId}`。
  */
-import { useEffect } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 
 export interface ChatMessageLike {
   id: string
@@ -30,6 +30,29 @@ const STORE_KEY = 'moji.chat-read-index.v1'
 const MAX_CHANNELS = 64
 
 let cache: Record<string, ChatReadMark> | null = null
+const readListeners = new Set<() => void>()
+let readRevision = 0
+
+/** 已读位置变化后重算名册未读红点：这是 localStorage 里的外部状态，React 不会自动知道 */
+function emitReadChange(): void {
+  readRevision += 1
+  for (const listener of readListeners) listener()
+}
+
+export function subscribeChatReadMarks(listener: () => void): () => void {
+  readListeners.add(listener)
+  return () => {
+    readListeners.delete(listener)
+  }
+}
+
+export function chatReadRevision(): number {
+  return readRevision
+}
+
+export function useChatReadRevision(): number {
+  return useSyncExternalStore(subscribeChatReadMarks, chatReadRevision, chatReadRevision)
+}
 
 function readAll(): Record<string, ChatReadMark> {
   if (cache) return cache
@@ -75,6 +98,7 @@ function persist(all: Record<string, ChatReadMark>): void {
   } catch {
     // 隐私模式 / 配额满：读进度丢了不影响聊天，只是新消息数会退回 0
   }
+  emitReadChange()
 }
 
 /** 某条通道最后读到的那条；没记录返回 null */
@@ -108,6 +132,19 @@ export function unreadAfter(messages: readonly ChatMessageLike[], mark: ChatRead
   let n = 0
   for (const m of messages) if ((m.ts || 0) > mark.ts) n++
   return n
+}
+
+/**
+ * 名册上的「agent 未读」：只数 agent 发出的消息（direction=out），
+ * 用户自己的发言不算欠读。没有浏览记录时整段私聊都算未读——对方从没被打开过。
+ */
+export function unreadAgentRepliesAfter(
+  messages: readonly (ChatMessageLike & { direction?: 'in' | 'out' })[],
+  mark: ChatReadMark | null,
+): number {
+  const replies = messages.filter((m) => m.direction === 'out')
+  if (!mark) return replies.length
+  return unreadAfter(replies, mark)
 }
 
 /** 测试用：清掉模块缓存（localStorage 由测试自己清） */

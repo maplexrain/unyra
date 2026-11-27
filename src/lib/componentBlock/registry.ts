@@ -1,12 +1,23 @@
 /**
  * 文档排版配方组件注册中心 (Document Component Registry)
  *
- * 统一管理内置 9 个精装出版级排版配方组件与外部注册的自定义文档组件。
- * 提供：
- * 1. listDocumentComponents: 支持仅返回简短描述与 id (供 api.design.component.list)
- * 2. getDocumentComponent: 获取组件完整签名 (供 api.design.component.get)
- * 3. register / update / delete: 管理外部注册组件并持久化到 localStorage
+ * 内置 9 个出版级配方 + 用户目录里的外部 TSX 组件（`users/<uid>/doc-design/*.tsx`）。
+ * 外部组件不再存 localStorage：注册 / 更新 = 新建或改写一个外部 TSX 文件，加载器动态编译，
+ * 保存后热更新。提供：
+ * 1. listDocumentComponents: 简洁清单（供 api.design.component.list）
+ * 2. getDocumentComponent: 完整签名（供 api.design.component.get / 渲染器）
+ * 3. register / update / delete: 管理外部 TSX 文件
  */
+import {
+  deleteExternalModuleFile,
+  externalModuleFileName,
+  getExternalModule,
+  listExternalModules,
+  subscribeExternalModules,
+  writeExternalModuleFile,
+  type ExternalDocComponentDef,
+} from '../externalModules'
+import { docComponentTemplate, externalModuleSeed } from '../externalModules/templates'
 
 export interface ComponentSlotMeta {
   name: string
@@ -31,7 +42,10 @@ export interface DocumentComponentDef {
   slots?: ComponentSlotMeta[]
   attrs?: ComponentAttrMeta[]
   example: string
-  template?: string
+  /** 外部组件：真正被渲染的 React 组件 */
+  component?: ExternalDocComponentDef['component']
+  /** 外部组件所在的 TSX 文件（相对当前用户目录），内置组件没有 */
+  file?: string
   createdAt?: number
   updatedAt?: number
 }
@@ -204,31 +218,9 @@ export const BUILTIN_DOC_COMPONENTS: DocumentComponentDef[] = [
   },
 ]
 
-const STORAGE_KEY_DOC_COMPONENTS = 'moji:document:custom_components'
+/* ---------- 外部 TSX 组件：从 doc-design/ 动态加载 ---------- */
 
 type Listener = () => void
-const listeners = new Set<Listener>()
-
-function safeReadStorage(): DocumentComponentDef[] {
-  if (typeof window === 'undefined' || !window.localStorage) return []
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_DOC_COMPONENTS)
-    if (!raw) return []
-    return JSON.parse(raw) as DocumentComponentDef[]
-  } catch {
-    return []
-  }
-}
-
-function safeWriteStorage(list: DocumentComponentDef[]): void {
-  if (typeof window === 'undefined' || !window.localStorage) return
-  try {
-    localStorage.setItem(STORAGE_KEY_DOC_COMPONENTS, JSON.stringify(list))
-    notify()
-  } catch (err) {
-    console.warn('[docComponentRegistry] 存储失败:', err)
-  }
-}
 
 function notify(): void {
   for (const fn of listeners) {
@@ -238,7 +230,10 @@ function notify(): void {
   }
 }
 
-/** 订阅配方组件变更事件 */
+const listeners = new Set<Listener>()
+subscribeExternalModules(notify)
+
+/** 订阅配方组件变更事件（内置不变；外部文件保存 / 删除后触发） */
 export function onDocumentComponentsChange(cb: Listener): () => void {
   listeners.add(cb)
   return () => {
@@ -246,12 +241,43 @@ export function onDocumentComponentsChange(cb: Listener): () => void {
   }
 }
 
-/** 查询全部已注册的文档组件 */
+function toDocumentComponent(record: {
+  id: string
+  file: string
+  loadedAt: number
+  def: Record<string, unknown>
+}): DocumentComponentDef {
+  const raw = record.def as unknown as ExternalDocComponentDef
+  const category = raw.category as DocumentComponentDef['category'] | undefined
+  return {
+    id: record.id,
+    tag: String(raw.tag ?? record.id),
+    name: String(raw.name ?? raw.tag ?? record.id),
+    description: String(raw.description ?? '外部注册教学组件'),
+    category: category && ['callout', 'layout', 'formula', 'timeline', 'data', 'quiz', 'custom'].includes(category)
+      ? category
+      : 'custom',
+    source: 'external',
+    slots: (raw.slots ?? []) as ComponentSlotMeta[],
+    attrs: (raw.attrs ?? []) as ComponentAttrMeta[],
+    example: String(raw.example ?? `<${String(raw.tag ?? record.id)}>\n  <div #describe>外部组件内容</div>\n</${String(raw.tag ?? record.id)}>`),
+    component: typeof raw.component === 'function' ? raw.component : undefined,
+    file: record.file,
+    createdAt: record.loadedAt,
+    updatedAt: record.loadedAt,
+  }
+}
+
+function externalDocumentComponents(): DocumentComponentDef[] {
+  return listExternalModules('doc-component').map(toDocumentComponent)
+}
+
+/** 查询全部已注册的文档组件（内置 + 外部 TSX） */
 export function listDocumentComponents(opts: {
   source?: 'builtin' | 'external'
   query?: string
 } = {}): DocumentComponentDef[] {
-  const custom = safeReadStorage()
+  const custom = externalDocumentComponents()
   let all: DocumentComponentDef[] = []
 
   if (opts.source === 'builtin') {
@@ -284,8 +310,7 @@ export function getDocumentComponent(idOrTag: string): DocumentComponentDef | un
   return all.find((c) => c.id.toLowerCase() === target || c.tag.toLowerCase() === target)
 }
 
-/** 注册外部文档配方组件 */
-export function registerDocumentComponent(def: {
+export interface RegisterDocumentComponentInput {
   id?: string
   tag: string
   name: string
@@ -294,89 +319,115 @@ export function registerDocumentComponent(def: {
   slots?: ComponentSlotMeta[]
   attrs?: ComponentAttrMeta[]
   example?: string
-  template?: string
-}): { ok: boolean; component?: DocumentComponentDef; error?: string } {
+  /** 直接提供完整 TSX 源码（外部组件以文件为源；给了就忽略上面其它字段生成的模板） */
+  source?: string
+}
+
+/** 注册 / 覆盖一个外部文档组件：写 doc-design/<kind>--<id>.tsx，随后热更新 */
+export async function registerDocumentComponent(
+  def: RegisterDocumentComponentInput,
+): Promise<{ ok: boolean; component?: DocumentComponentDef; file?: string; error?: string }> {
   const tag = def.tag.trim()
   if (!tag) return { ok: false, error: '组件标签 tag 不能为空' }
   const id = (def.id?.trim() || tag.toLowerCase()).replace(/[^a-zA-Z0-9_-]/g, '_')
 
-  // 内置组件禁止直接同名顶替
   if (BUILTIN_DOC_COMPONENTS.some((b) => b.id === id || b.tag.toLowerCase() === tag.toLowerCase())) {
     return { ok: false, error: `不能覆盖内置组件: ${id}` }
   }
 
-  const custom = safeReadStorage()
-  const existingIdx = custom.findIndex((c) => c.id === id)
-
-  const newDef: DocumentComponentDef = {
+  const existing = getDocumentComponent(id)
+  const merged = {
     id,
     tag,
     name: def.name.trim() || tag,
     description: def.description.trim() || '外部注册教学组件',
     category: def.category || 'custom',
-    source: 'external',
-    slots: def.slots || [],
-    attrs: def.attrs || [],
-    example: def.example?.trim() || `<${tag}>\n  <div #describe>自定义组件内容</div>\n</${tag}>`,
-    template: def.template?.trim(),
-    createdAt: existingIdx >= 0 ? custom[existingIdx]!.createdAt : Date.now(),
-    updatedAt: Date.now(),
+    slots: def.slots ?? existing?.slots,
+    attrs: def.attrs || existing?.attrs || [],
+    example: def.example?.trim() || existing?.example,
   }
 
-  if (existingIdx >= 0) {
-    custom[existingIdx] = newDef
-  } else {
-    custom.push(newDef)
-  }
+  const source = def.source ?? docComponentTemplate(merged)
+  const fileName = externalModuleFileName('doc-component', id)
+  const written = await writeExternalModuleFile(fileName, source)
+  if (!written.ok) return { ok: false, error: written.error, file: written.file }
 
-  safeWriteStorage(custom)
-  return { ok: true, component: newDef }
+  const record = listExternalModules('doc-component').find((r) => r.id === id)
+  const component = record ? toDocumentComponent(record) : undefined
+  return { ok: true, component, file: written.file }
 }
 
-/** 更新外部文档配方组件 */
-export function updateDocumentComponent(
+export interface UpdateDocumentComponentPatch extends Partial<Omit<DocumentComponentDef, 'id' | 'source' | 'createdAt' | 'file' | 'component'>> {
+  /** 直接替换外部 TSX 源码；不传则按元数据重新生成模板（会丢失自定义组件） */
+  source?: string
+}
+
+/** 更新外部文档组件。以 TSX 文件为源：自定义 component 的组件必须传 source。 */
+export async function updateDocumentComponent(
   id: string,
-  patch: Partial<Omit<DocumentComponentDef, 'id' | 'source' | 'createdAt'>>,
-): { ok: boolean; component?: DocumentComponentDef; error?: string } {
+  patch: UpdateDocumentComponentPatch,
+): Promise<{ ok: boolean; component?: DocumentComponentDef; file?: string; error?: string }> {
   if (!id) return { ok: false, error: '缺少组件 id' }
   if (BUILTIN_DOC_COMPONENTS.some((b) => b.id === id)) {
     return { ok: false, error: '内置组件不允许直接修改' }
   }
 
-  const custom = safeReadStorage()
-  const idx = custom.findIndex((c) => c.id === id)
-  if (idx < 0) {
+  const current = getDocumentComponent(id)
+  if (!current || current.source !== 'external') {
     return { ok: false, error: `未找到外部组件: ${id}` }
   }
-
-  const target = custom[idx]!
-  const updated: DocumentComponentDef = {
-    ...target,
-    ...patch,
-    id: target.id,
-    source: 'external',
-    createdAt: target.createdAt,
-    updatedAt: Date.now(),
+  if (!patch.source && current.component) {
+    return { ok: false, error: '这个组件使用 React component，更新请直接传 source（TSX 源码）' }
   }
 
-  custom[idx] = updated
-  safeWriteStorage(custom)
-  return { ok: true, component: updated }
+  const merged = {
+    id: current.id,
+    tag: patch.tag ?? current.tag,
+    name: patch.name ?? current.name,
+    description: patch.description ?? current.description,
+    category: patch.category ?? current.category,
+    slots: patch.slots ?? current.slots ?? [],
+    attrs: patch.attrs ?? current.attrs ?? [],
+    example: patch.example ?? current.example,
+  }
+  const source = patch.source ?? docComponentTemplate(merged)
+  const fileName = externalModuleFileName('doc-component', current.id)
+  const written = await writeExternalModuleFile(fileName, source)
+  if (!written.ok) return { ok: false, error: written.error, file: written.file }
+
+  const record = listExternalModules('doc-component').find((r) => r.id === current.id)
+  return { ok: true, component: record ? toDocumentComponent(record) : undefined, file: written.file }
 }
 
-/** 删除外部文档配方组件 */
-export function deleteDocumentComponent(id: string): { ok: boolean; error?: string } {
+/** 删除外部文档组件：删 doc-design/ 下对应的 TSX 文件 */
+export async function deleteDocumentComponent(id: string): Promise<{ ok: boolean; error?: string }> {
   if (!id) return { ok: false, error: '缺少组件 id' }
   if (BUILTIN_DOC_COMPONENTS.some((b) => b.id === id)) {
     return { ok: false, error: '内置组件不允许删除' }
   }
+  const record = getExternalModule('doc-component', id)
+  if (!record) return { ok: false, error: `未找到外部组件: ${id}` }
+  return deleteExternalModuleFile(record.fileName)
+}
 
-  const custom = safeReadStorage()
-  const filtered = custom.filter((c) => c.id !== id)
-  if (filtered.length === custom.length) {
-    return { ok: false, error: `未找到外部组件: ${id}` }
-  }
-
-  safeWriteStorage(filtered)
-  return { ok: true }
+/**
+ * 直接新建一个带完整模板的外部组件 TSX 文件。
+ *
+ * 设置面板的「新建」不再弹表单：这里生成唯一 id / tag，写入可运行的 TSX 模板；
+ * 调用方拿到 file 后直接用应用内文件页签打开编辑。文件保存后由 loader 热更新。
+ */
+export async function createDocumentComponentFile(): Promise<{
+  ok: boolean
+  component?: DocumentComponentDef
+  file?: string
+  error?: string
+}> {
+  const seed = externalModuleSeed('custom')
+  const suffix = seed.replace(/^custom-/, '').replace(/-/g, '').toUpperCase()
+  return registerDocumentComponent({
+    id: seed,
+    tag: `Custom${suffix}`,
+    name: '未命名文档组件',
+    description: '直接编辑这个 TSX 文件里的 tag / name / description / component；保存后自动热更新。',
+  })
 }

@@ -31,8 +31,9 @@ import { fadeMask, useScrollEdges } from '../../../lib/scrollFade'
 import { BubbleBody } from './BubbleBody'
 import { AskBubble } from './AskBubble'
 import { ChannelAttachments, ChannelExtraBlock } from './ChannelExtras'
+import { ChannelQuoteChip, quoteInfoOf, stripChannelQuoteBlock } from './ChannelQuoteChip'
 import { DeliveryBlock } from './DeliveryBlock'
-import { WorkBindingBadge } from './WorkBindingBadge'
+import { latestWorkAnchors, type WorkInlineSource } from '../../../lib/workInline'
 import { FollowLatestButton } from './MessageBubble'
 import { MessageContextMenu, type MessageMenuItem } from './MessageContextMenu'
 import { MessageMediaGrid } from './MessageMedia'
@@ -48,6 +49,7 @@ import { mentionedAgentsOf } from './groupMentions'
 import { WorkingAgentStack } from './WorkingAgentStack'
 import { GroupTriageFallbackDialog } from './GroupTriageFallbackDialog'
 import { GroupChatTitle } from './GroupChatTitle'
+import { MentionPicker, MentionedAgentChips } from './GroupMentionMenu'
 
 export interface GroupChatAgent {
   id: AgentTeamMode
@@ -114,6 +116,7 @@ export function GroupChatPanel({
   composerActive = true,
   focusMessageId,
   onFocusMessageHandled,
+  work,
 }: {
   messages: ChannelMessage[]
   agents: GroupChatAgent[]
@@ -151,6 +154,8 @@ export function GroupChatPanel({
   focusMessageId?: string | null
   /** 定位完成的通知（宿主据此清掉待定位 id，避免下次重开又滚一遍） */
   onFocusMessageHandled?: () => void
+  /** 正文里 `[标题](work: id)` 的实时数据源（当前目标内所有 role 的 work） */
+  work?: WorkInlineSource
 }) {
   const [text, setText] = useState('')
   const [caret, setCaret] = useState(0)
@@ -203,11 +208,29 @@ export function GroupChatPanel({
 
   const listMessages = threadRoot ? threadComments : topMessages
   const viewKey = resetKey + (threadRootId ? '|' + threadRootId : '')
-  /** 要定位的那条在当前列表里的位置：负值 = 不在这一层（可能在评论串里，等切换后再算） */
-  const focusIndex = useMemo(
-    () => (focusMessageId ? listMessages.findIndex((m) => m.id === focusMessageId) : -1),
-    [focusMessageId, listMessages],
+  /**
+   * 内嵌 work 状态去重：一个 work 在这个列表里只让最新那条可渲染气泡持有。
+   * ask 气泡不画正文，不能当锚点，否则它一成为「最新引用」就会把状态块整块吞掉。
+   * 评论串视图里根消息固定显示在最上面，也要参与锚点计算，否则根上的状态会凭空消失。
+   */
+  const anchorMessages = useMemo(
+    () => (threadRoot ? [threadRoot, ...threadComments] : topMessages),
+    [threadRoot, threadComments, topMessages],
   )
+  const workAnchors = useMemo(
+    () => latestWorkAnchors(
+      anchorMessages.filter((m) => !m.ask && m.text.trim()).map((m) => ({ id: m.id, text: m.text })),
+      work,
+    ),
+    [anchorMessages, work],
+  )
+  const groupQuotedById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages])
+  const [quoteFocusId, setQuoteFocusId] = useState<string | null>(null)
+  /** 要定位的那条在当前列表里的位置：负值 = 不在这一层（可能在评论串里，等切换后再算） */
+  const focusIndex = useMemo(() => {
+    const id = quoteFocusId ?? focusMessageId
+    return id ? listMessages.findIndex((m) => m.id === id) : -1
+  }, [focusMessageId, listMessages, quoteFocusId])
   const { start, hasOlder, sentinelRef } = useRecentWindow(listMessages.length, viewKey, focusIndex)
   const visible = listMessages.slice(start)
   /** 评论串视图里根消息永远单独占第一条；它不计入评论窗口 */
@@ -290,6 +313,42 @@ export function GroupChatPanel({
     })
     return () => cancelAnimationFrame(raf)
   }, [focusMessageId, listMessages.length, start, threadRootId, onFocusMessageHandled])
+
+  /** 引用跳转：先切到目标所在的评论串，滚过去并闪一下；不需要通知宿主清待定位 id。 */
+  useEffect(() => {
+    if (!quoteFocusId) return
+    const target = messages.find((m) => m.id === quoteFocusId)
+    if (!target) return
+    if (target.threadRootId) {
+      if (threadRootId !== target.threadRootId) setThreadRootId(target.threadRootId)
+    } else if (threadRootId) {
+      setThreadRootId(null)
+    }
+  }, [quoteFocusId, messages, threadRootId])
+
+  const quoteFocusDoneRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (!quoteFocusId) {
+      quoteFocusDoneRef.current = null
+      return
+    }
+    if (quoteFocusDoneRef.current === quoteFocusId) return
+    const el = scrollMsgRefs.current.get(quoteFocusId)
+    if (!el) return
+    quoteFocusDoneRef.current = quoteFocusId
+    const raf = requestAnimationFrame(() => {
+      el.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+      setFlashId(quoteFocusId)
+      window.setTimeout(() => setFlashId(null), 1400)
+      setQuoteFocusId(null)
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [quoteFocusId, listMessages.length, start, threadRootId])
+
+  const jumpToQuote = (id: string) => {
+    if (!messages.some((m) => m.id === id)) return
+    setQuoteFocusId(id)
+  }
 
   const mentioned = useMemo(() => mentionedAgentsOf(text, agents), [text, agents])
   const mention = mentionContextAt(text, caret)
@@ -604,7 +663,7 @@ export function GroupChatPanel({
               const hasMedia = Boolean(
                 m.attachments?.images?.length || (m.attachments?.files ?? []).some((f) => isVideoFile(f)),
               )
-              const bubbleVisible = Boolean(m.text.trim() || hasMedia || m.delivery || m.work || commentEntry)
+              const bubbleVisible = Boolean(m.text.trim() || hasMedia || m.delivery || commentEntry || m.quoteMessageId)
               const ccNames = Array.from(
                 new Set([
                   ...(m.cc?.map((p) => agents.find((a) => a.id === p.id)?.name || p.name) ?? []),
@@ -716,19 +775,30 @@ export function GroupChatPanel({
                             (mine ? 'bg-bubble-user -right-1' : 'bg-bubble-agent -left-1')
                           }
                         />
+                        {m.quoteMessageId ? (
+                          <ChannelQuoteChip
+                            quoteId={m.quoteMessageId}
+                            info={(() => {
+                              const quoted = groupQuotedById.get(m.quoteMessageId!)
+                              return quoted ? quoteInfoOf(quoted) : undefined
+                            })()}
+                            onJump={jumpToQuote}
+                          />
+                        ) : null}
                         <BubbleBody
-                          text={m.text}
+                          text={m.quoteMessageId ? stripChannelQuoteBlock(m.text) : m.text}
                           names={mentionNames}
                           labels={{ 用户: userName }}
                           tone={mine ? 'user' : 'agent'}
+                          work={work}
+                          messageId={m.id}
+                          workAnchorByKey={workAnchors}
                         />
                         {/* 图片 / 视频嵌在气泡内侧底部；其余文件挂在气泡外底侧 */}
                         <MessageMediaGrid
                           images={m.attachments?.images}
                           files={m.attachments?.files}
                         />
-                        {/* work 绑定状态条：发起任务的那条消息下面直接看进度 */}
-                        {m.work ? <WorkBindingBadge binding={m.work} /> : null}
                         {/* 交付账嵌在气泡内侧底部，不再单独长成一个“交付气泡” */}
                         {m.delivery ? (
                           <DeliveryBlock delivery={m.delivery} onOpenFile={onOpenFile} goalId={m.goalId} />
@@ -776,40 +846,12 @@ export function GroupChatPanel({
         ) : null}
         <div className="relative">
           {pickerOpen ? (
-            <div className="moji-bloom-up-in absolute bottom-full left-0 right-0 z-30 mb-2 max-h-[240px] overflow-y-auto rounded-2xl border border-line-strong bg-card/95 p-1.5 shadow-[0_16px_48px_rgba(0,0,0,0.18)] backdrop-blur-xl">
-              {filteredAgents.length ? (
-                filteredAgents.map((agent, i) => {
-                  const meta = AGENT_ROSTER_META[agent.id]
-                  const active = mentioned.some((a) => a.id === agent.id)
-                  return (
-                    <button
-                      key={agent.id}
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => insertMention(agent)}
-                      className={
-                        'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition ' +
-                        (i === pickIndex ? 'bg-seal/10' : active ? 'bg-line/20' : 'hover:bg-line/25')
-                      }
-                    >
-                      <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-line/60">
-                        <AgentAvatarGlyph
-                          avatarId={agent.avatarId}
-                          fallback={meta?.fallbackIcon ?? MessageSquare}
-                          size={13}
-                          imgSize={24}
-                          imgClassName="h-6 w-6 rounded-full"
-                        />
-                      </span>
-                      <span className={'text-[12px] font-medium ' + (meta?.nameClass ?? 'text-ink')}>{agent.name}</span>
-                      {agent.running ? <span className="ml-auto text-[10px] text-amber-600">{t('运行中')}</span> : null}
-                    </button>
-                  )
-                })
-              ) : (
-                <div className="px-2 py-3 text-center text-[11.5px] text-ink-faint">没有匹配的 agent</div>
-              )}
-            </div>
+            <MentionPicker
+              agents={filteredAgents}
+              mentionedIds={mentioned.map((a) => a.id)}
+              pickIndex={pickIndex}
+              onPick={insertMention}
+            />
           ) : null}
           <div
             data-group-composer
@@ -822,24 +864,7 @@ export function GroupChatPanel({
               onRemoveImage={attach.removeImage}
               onRemoveFile={attach.removeFile}
             />
-            {mentioned.length ? (
-              <div className="flex flex-wrap items-center gap-1 px-3 pt-2">
-                {mentioned.map((agent) => {
-                  const meta = AGENT_ROSTER_META[agent.id]
-                  return (
-                    <span
-                      key={agent.id}
-                      className={
-                        'inline-flex items-center gap-0.5 rounded-full bg-line/35 px-1.5 py-0.5 text-[10.5px] font-medium ' +
-                        (meta?.nameClass ?? 'text-ink')
-                      }
-                    >
-                      @{agent.name}
-                    </span>
-                  )
-                })}
-              </div>
-            ) : null}
+            <MentionedAgentChips agents={mentioned} />
             <textarea
               ref={inputRef}
               value={text}

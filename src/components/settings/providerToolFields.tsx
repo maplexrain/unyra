@@ -4,7 +4,8 @@
  * - **服务端工具**（ServerToolsFields，基础配置）：联网搜索 deepseek_web_search 与
  *   阅读链接 deepseek_read_url——都在 DeepSeek 服务端执行，请求体的 tools 数组里
  *   声明即可（见 ai/client 的 serverToolDecls）。只有**预设声明了 serverTools** 的
- *   提供商（当前仅 DeepSeek）才渲染这个组件：别的提供商不支持，开关组件不展示。
+ *   提供商（当前仅 DeepSeek）才渲染这个组件；运行时也只对 work 层传
+ *   `enableServerTools`，role / 自由对话不会把联网能力绕出去。
  * - **Files API**（FilesApiFields，高级配置）：云端文件上传/引用的可选能力——
  *   不是每家都提供，所以对**所有**提供商都渲染开关（默认关），由用户自己判断；
  *   DeepSeek 预设兜底为开（开箱即用），用户显式关闭后以用户为准。
@@ -61,7 +62,7 @@ export function ServerToolsFields({
           checked={current.webSearch}
           onChange={(v) => patch({ webSearch: v })}
           title={t('联网搜索')}
-          hint={t('模型需要最新信息时自动搜索；与智能导师的工具循环互斥（工具轮不注入），纯聊天可用')}
+          hint={t('只在 work 层生效：模型需要最新信息时自动搜索，结果与来源会显示在思维列表；role 层不注入，联网仍归 work')}
         />
         <SwitchRow
           checked={current.readUrl}

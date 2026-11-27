@@ -33,6 +33,7 @@ import { nodeById, touchNode, ensureConversation, resolveDisplayedConversation }
 import { upsertAgentTab, withAgentTabs, removeAgentTabsOfGoals } from '../../../learn/agentTabs'
 import { normalizeWebInput } from '../../../learn/webUrl'
 import { webviewOf } from '../../../learn/web/webviewRegistry'
+import { agentBrowserRuntime } from '../../../learn/web/agentBrowser'
 import { subscribeOpenGroupChat } from '../../../learn/groupChatAttention'
 import { buildJumpToElementScript } from '../../../learn/web/guestJump'
 import { isElectron, isWeb, native } from '../../../lib/native'
@@ -734,7 +735,15 @@ export function useTabOpening({
   useEffect(() => {
     if (!isElectron()) return
     const browser = native().browser
-    const offTab = browser.onOpenTab((url) => openWebTab(url))
+    const offTab = browser.onOpenTab((url, wcId) => {
+      // 智能体浏览器里的 target=_blank：接回自己的 session 池，绝不落成文档页签
+      const owner = wcId !== undefined ? agentBrowserRuntime.ownerForGuest(wcId) : null
+      if (owner) {
+        void agentBrowserRuntime.open(owner, url).catch(() => {})
+        return
+      }
+      openWebTab(url)
+    })
     const offKey = browser.onShortcut((key) => {
       const fn = /^f(\d{1,2})$/.exec(key)
       window.dispatchEvent(

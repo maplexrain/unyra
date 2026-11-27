@@ -22,6 +22,7 @@ import { hydrateFreeChat } from '../learn/freeChat'
 import { hydrateGroupChat } from '../learn/groupChat'
 import { hydratePromptFiles } from '../agent/promptFileStore'
 import { hydrateExternalAgents } from '../agent/externalAgentStore'
+import { hydrateExternalModules } from './externalModules'
 import { t } from '../i18n'
 import { bootstrapUsers } from '../user/store'
 import { reconcileBackgroundAssets } from '../user/background'
@@ -62,6 +63,9 @@ export async function enterUserScope(uid: string | null): Promise<void> {
     await autoMigrateIfNeeded(uid)
   }
   await hydrateLearnStore(uid)
+  // 设计 / 课堂的外部 TSX 组件（users/{uid}/doc-design/*.tsx）：首帧前扫描并开启热更新。
+  // 必须放在 hydrateLearnStore 之后：用户内相对路径依赖 setUserScope(uid)。
+  await hydrateExternalModules()
   startupMark('r:learn-done')
   refreshAppearance()
   /*

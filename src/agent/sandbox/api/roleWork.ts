@@ -18,16 +18,34 @@ function cleanMentions(raw: unknown): string[] {
   return out
 }
 
+const ATTACH_IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp|avif)(?:[?#].*)?$/i
+
 function cleanAttachments(raw: unknown): ChatAttachmentInput[] | undefined {
   if (!Array.isArray(raw)) return undefined
   const out: ChatAttachmentInput[] = []
   for (const item of raw.slice(0, 4)) {
+    // 模型经常直接给字符串数组：["https://…/a.jpg"]。旧逻辑只认对象，整条附件被静默丢掉。
+    if (typeof item === 'string') {
+      const value = item.trim()
+      if (!value) continue
+      const image = /^(?:https?:|moji:static\/)/i.test(value) || ATTACH_IMAGE_EXT.test(value)
+      out.push(image ? { image: value } : { file: value })
+      continue
+    }
     const a = asRecord(item)
-    const image = asText(a.image).trim()
+    const image = asText(a.image).trim() || asText(a.url).trim()
     const file = asText(a.file).trim()
     const name = asText(a.name).trim()
     if (!image && !file) continue
-    out.push({ ...(image ? { image } : {}), ...(file ? { file } : {}), ...(name ? { name } : {}) })
+    const bytes = typeof a.bytes === 'number' && Number.isFinite(a.bytes) ? a.bytes : undefined
+    const mime = asText(a.mime).trim()
+    out.push({
+      ...(image ? { image } : {}),
+      ...(file ? { file } : {}),
+      ...(name ? { name } : {}),
+      ...(bytes !== undefined ? { bytes } : {}),
+      ...(mime ? { mime } : {}),
+    })
   }
   return out.length ? out : undefined
 }
@@ -82,14 +100,12 @@ export function installRoleWork(api: Record<string, unknown>, opts: SandboxOptio
       const name = asText(a.name).trim()
       const text = asText(a.text).trim()
       const messageId = asText(a.messageId).trim()
-      const bindMessageId = asText(a.bindMessageId).trim()
       if (!name) return { ok: false, error: 'work.send 需要 name' }
       if (!text && !messageId) return { ok: false, error: 'work.send 需要 text 或 messageId' }
       const input: WorkSendInput = {
         name,
         ...(text ? { text } : {}),
         ...(messageId ? { messageId } : {}),
-        ...(bindMessageId ? { bindMessageId } : {}),
       }
       try {
         return await work.send(input)

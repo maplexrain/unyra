@@ -41,6 +41,7 @@ import type {
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
+  DevConsoleOpenResult, DevLogEntry, DesignPreviewStatus,
 } from '../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（渲染层与主进程共用一份，见该文件顶部）：
@@ -63,6 +64,7 @@ export type {
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
+  DevConsoleOpenResult, DevLogEntry,
 }
 
 /* ---------- 只在 preload 这一侧用到的形状 ---------- */
@@ -626,6 +628,29 @@ const api = {
   },
 
   /**
+   * 开发者控制台：主窗口那侧用 open；控制台窗口那侧用 logs / onEntry。
+   * 日志缓冲在主进程（见 electron/app/devLogs），控制台晚开也能回放之前的日志。
+   */
+  devConsole: {
+    /** 打开独立控制台窗口；已经开着就聚焦并回 reused */
+    open: (): Promise<DevConsoleOpenResult> => ipcRenderer.invoke('dev:open'),
+    /** 当前日志快照（仅控制台窗口可读） */
+    logs: (): Promise<DevLogEntry[]> => ipcRenderer.invoke('dev:logs'),
+    /** 订阅实时日志；返回取消订阅函数（组件卸载时必须调用） */
+    onEntry: (cb: (entry: DevLogEntry) => void): (() => void) => {
+      const listener = (_e: unknown, entry: DevLogEntry) => cb(entry)
+      ipcRenderer.on('dev:entry', listener)
+      return () => ipcRenderer.removeListener('dev:entry', listener)
+    },
+  },
+
+  /** 设计预览内置服务：应用启动时已监听，这里只查状态 / 兜底拉起 */
+  designPreview: {
+    status: (): Promise<DesignPreviewStatus> => ipcRenderer.invoke('designPreview:status'),
+    ensure: (): Promise<DesignPreviewStatus> => ipcRenderer.invoke('designPreview:ensure'),
+  },
+
+  /**
    * 外壳行为：关窗策略与托盘。
    *
    * 策略存在主进程（appdata 里的 global.yaml），这里只负责读写：真正拦关窗的是主进程，
@@ -655,17 +680,18 @@ const api = {
   },
 
   /**
-   * 内置浏览器页签（见 src/components/learn/web 与 electron/app/webSession）。
+   * 网页页签 / 智能体浏览器（见 src/components/learn/workspace 与 electron/app/webSession）。
    * 两条都是主进程推、渲染层收：
-   * - onOpenTab —— 网页的弹窗 / target=_blank 要开的新页签（拦截与协议判定在主进程）；
+   * - onOpenTab —— 网页的弹窗 / target=_blank 要开的新页签（wcId 用来判断是不是智能体
+   *   guest；是的话回流成后台会话，否则才开用户页签）；
    * - onShortcut —— 焦点在网页里时按下的应用快捷键（Ctrl+Q/W/L），转发回来当 DOM 键用。
    * - onGuestInput —— guest 里的鼠标指针事件（electron/guestPreload 上报），
    *   渲染层据此在 <webview> 元素上合成可冒泡的 PointerEvent。
    * 都返回取消订阅函数。
    */
   browser: {
-    onOpenTab: (cb: (url: string) => void): (() => void) => {
-      const listener = (_e: unknown, url: string): void => cb(url)
+    onOpenTab: (cb: (url: string, wcId?: number) => void): (() => void) => {
+      const listener = (_e: unknown, url: string, wcId?: number): void => cb(url, wcId)
       ipcRenderer.on('web:openTab', listener)
       return () => ipcRenderer.removeListener('web:openTab', listener)
     },

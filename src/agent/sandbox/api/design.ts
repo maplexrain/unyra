@@ -18,6 +18,7 @@ import {
   updateDocumentComponent,
   deleteDocumentComponent,
   type DocumentComponentDef,
+  type UpdateDocumentComponentPatch,
 } from '../../../lib/componentBlock/registry'
 import { asRecord, asText } from '../refs'
 import { wrapApi } from '../wrap'
@@ -42,6 +43,7 @@ export function installDesign(
       name: c.name,
       description: c.description,
       source: c.source,
+      file: c.file,
     }))
 
     return { ok: true, components }
@@ -49,7 +51,7 @@ export function installDesign(
 
   wrapApi(api, 'design.component.list', handleList, log)
 
-  // 2. 查询组件完整签名（包含 slots, attrs, example, template）
+  // 2. 查询组件完整签名（包含 slots, attrs, example）
   const handleGet = (args: unknown[]) => {
     const first = args[0]
     let target = ''
@@ -68,8 +70,10 @@ export function installDesign(
     if (!component) {
       return { ok: false, error: `未找到组件: ${target}` }
     }
-
-    return { ok: true, component }
+    // component 是运行时函数，不能跨 Worker/IPC 序列化；外部组件告诉调用方文件位置即可。
+    const doc = { ...component } as Record<string, unknown>
+    delete doc.component
+    return { ok: true, component: doc }
   }
 
   wrapApi(api, 'design.component.get', handleGet, log)
@@ -81,12 +85,12 @@ export function installDesign(
     const name = asText(o.name)
     const description = asText(o.description)
     const example = typeof o.example === 'string' ? o.example : undefined
-    const template = typeof o.template === 'string' ? o.template : undefined
     const category = typeof o.category === 'string' ? (o.category as DocumentComponentDef['category']) : undefined
     const id = typeof o.id === 'string' ? asText(o.id) : undefined
 
     const slots = Array.isArray(o.slots) ? (o.slots as DocumentComponentDef['slots']) : undefined
     const attrs = Array.isArray(o.attrs) ? (o.attrs as DocumentComponentDef['attrs']) : undefined
+    const source = typeof o.source === 'string' ? o.source : undefined
 
     return registerDocumentComponent({
       id,
@@ -95,9 +99,9 @@ export function installDesign(
       description,
       category,
       example,
-      template,
       slots,
       attrs,
+      source,
     })
   }
 
@@ -111,12 +115,13 @@ export function installDesign(
       return { ok: false, error: '缺少组件 id' }
     }
 
-    const patch: Partial<Omit<DocumentComponentDef, 'id' | 'source' | 'createdAt'>> = {}
+    const patch: UpdateDocumentComponentPatch = {}
     if (typeof o.name === 'string') patch.name = asText(o.name)
     if (typeof o.tag === 'string') patch.tag = asText(o.tag)
     if (typeof o.description === 'string') patch.description = asText(o.description)
     if (typeof o.example === 'string') patch.example = o.example
-    if (typeof o.template === 'string') patch.template = o.template
+    if (typeof o.source === 'string') patch.source = o.source
+    if (typeof o.category === 'string') patch.category = o.category as DocumentComponentDef['category']
     if (Array.isArray(o.slots)) patch.slots = o.slots as DocumentComponentDef['slots']
     if (Array.isArray(o.attrs)) patch.attrs = o.attrs as DocumentComponentDef['attrs']
 

@@ -27,12 +27,21 @@ import {
   type EffortMap,
   type ProviderProtocol,
   type ReasoningEffort,
+  type ServerToolStep,
   type StreamChatResult,
   type StreamChatOptions,
+  type UrlCitation,
   type UsagePurpose,
 } from './types'
 import type { ProviderQuirks } from './providers'
 import type { FilesApiConfig, ServerToolConfig } from './capabilitySettings'
+import {
+  normalizeAnnotations,
+  normalizeServerSteps,
+  normalizeServerToolEvent,
+  serverToolDeclarations,
+  wireServerToolCalls,
+} from './serverTools'
 import { recordUsage } from './usageLog'
 import { num } from '../lib/num'
 import { t } from '../i18n'
@@ -166,6 +175,8 @@ export function bodyFor(
     maxTokens?: number
     reasoningEffort?: ReasoningEffort
     json?: boolean
+    /** 只有 work 层会打开：允许服务端联网工具与本地 execute 同时声明 */
+    enableServerTools?: boolean
   },
 ): Record<string, unknown> {
   const isNone = opts.reasoningEffort === 'none'
@@ -258,6 +269,7 @@ export function bodyFor(
         }
       }
       if (m.tool_calls) msg.tool_calls = m.tool_calls
+      if (m.server_tool_calls?.length) msg.server_tool_calls = wireServerToolCalls(m.server_tool_calls)
       if (m.tool_call_id) msg.tool_call_id = m.tool_call_id
       return msg
     }),
@@ -352,35 +364,26 @@ export function bodyFor(
   }
   if (opts.json) body.response_format = { type: 'json_object' }
   /**
-   * 工具注入：本地执行的（execute 沙箱）与**服务端执行**的（DeepSeek 联网搜索 /
-   * 阅读链接）**互斥**——两者同时声明时，模型走服务端搜索后响应里带
-   * server_tool_calls / signature 块（要求多轮原样回传），而回传通道还没实现，
-   * 工具循环的下一跳必 400（实测文案 an assistant message must follow a user
-   * message）。本地工具在场时服务端搜索本来就被沙箱 api（web.search）覆盖，
-   * 功能无损失；纯聊天（无工具轮）才享受服务端搜索。tool_choice 保持 auto：
-   * 官方约定服务端工具不可强制指定（400）。
+   * 工具注入：DeepSeek 服务端联网工具（deepseek_web_search / deepseek_read_url）只在 work
+   * 层显式开启时声明，**可以与本地 execute 共存**——服务端跑完搜索，响应里带
+   * server_tool_calls / signature；运行时会把这份完整清单写回 assistant 历史，下一跳
+   * 不会因为缺失回传而 400。role / 自由对话不传 `enableServerTools`，联网仍只走 work。
+   *
+   * 服务端工具只支持 deepseek-flash；其它模型即使提供商开关打开也不声明，避免 400。
+   * tool_choice 保持 auto：官方约定服务端工具不可强制指定。
    *
    * json 模式必须排除服务端工具：DeepSeek 只允许 `text` 与这些工具同时使用，
    * 带上 response_format 会直接 400（群消息调度、标题生成都踩过）。
    */
-  const serverToolDecls = serverToolDeclarations(p)
+  const serverToolDecls = opts.enableServerTools ? serverToolDeclarations(p, opts.model) : []
   if (opts.tools?.length) {
-    body.tools = opts.tools
+    body.tools = serverToolDecls.length ? [...opts.tools, ...serverToolDecls] : opts.tools
     body.tool_choice = 'auto'
   } else if (!opts.json && serverToolDecls.length > 0) {
     body.tools = serverToolDecls
     body.tool_choice = 'auto'
   }
   return body
-}
-
-/** 按 provider 的服务端工具开关生成 tools 数组的声明条目（非 OpenAI 协议一律不声明） */
-function serverToolDeclarations(p: ResolvedProvider): Array<Record<string, string>> {
-  if ((p.protocol ?? 'openai') !== 'openai' || !p.serverTools) return []
-  const out: Array<Record<string, string>> = []
-  if (p.serverTools.webSearch) out.push({ type: 'deepseek_web_search' })
-  if (p.serverTools.readUrl) out.push({ type: 'deepseek_read_url' })
-  return out
 }
 
 /**
@@ -513,6 +516,9 @@ async function openAiStream(
   let tagBuffer = ''
   let finishReason: string | null = null
   const toolCalls = new Map<number, ChatToolCall>()
+  /** 服务端联网工具最终完整清单；只有声明了 enableServerTools 的 work 请求会收到 */
+  let serverToolSteps: ServerToolStep[] | undefined
+  let annotations: UrlCitation[] | undefined
   /** 用量的原始帧：字段名各家不一，收完再统一翻译 */
   let usageFrame: Record<string, unknown> | null = null
   const onAbort = () => void reader.cancel().catch(() => {})
@@ -600,7 +606,13 @@ async function openAiStream(
             id?: string
             function?: { name?: string; arguments?: string }
           }>
+          /** 服务端联网工具在结束 chunk 里一次性下发完整步骤 */
+          server_tool_calls?: unknown
+          /** 最终回答的网页引用锚点 */
+          annotations?: unknown
         }
+        /** 服务端联网工具的流式阶段事件 */
+        server_tool_event?: unknown
         finish_reason?: string | null
       }>
       /** include_usage 声明的用量帧（另有一家把它塞在 choices 里） */
@@ -615,6 +627,16 @@ async function openAiStream(
     const choice = json.choices?.[0]
     if (!choice) return
     const delta = choice.delta ?? {}
+    const serverTool = normalizeServerToolEvent(choice.server_tool_event)
+    if (serverTool) opts.onDelta?.({ serverTool })
+    if (Array.isArray(delta.server_tool_calls)) {
+      const steps = normalizeServerSteps(delta.server_tool_calls)
+      if (steps.length) serverToolSteps = steps
+    }
+    if (Array.isArray(delta.annotations)) {
+      const citations = normalizeAnnotations(delta.annotations)
+      if (citations.length) annotations = citations
+    }
     // 思维链字段各家命名不一（reasoning_content / reasoning）；
     // 严格尊重用户思考等级：当明确为 none（非思考模式）时，绝不抛出 reasoning 事件
     const thinking = delta.reasoning_content ?? delta.reasoning
@@ -694,6 +716,8 @@ async function openAiStream(
     toolCalls: [...toolCalls.values()],
     finishReason,
     usage: usageFrame ? translateUsage(usageFrame) : undefined,
+    ...(serverToolSteps?.length ? { serverToolCalls: serverToolSteps } : {}),
+    ...(annotations?.length ? { annotations } : {}),
   }
 }
 

@@ -1,7 +1,5 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { act } from 'react'
-import { createRoot } from 'react-dom/client'
 import { expandClassroomComponents } from '../src/learn/classroom/components'
 import { runAnimeAnimation, mountComponentAnimations } from '../src/learn/classroom/animations'
 import { BUILTIN_COMPONENTS, BUILTIN_ANIMATIONS } from '../src/learn/classroom/registry'
@@ -16,7 +14,6 @@ import type { StageViewport } from '../src/learn/classroom/StageViewport'
 import type { ITTSAdapter, LessonCourse } from '../src/learn/classroom/types'
 import { buildApi } from '../src/agent/sandbox/api'
 import { WORKFLOWS_GUIDE } from '../src/learn/ai/workflowsGuide'
-import ClassroomShowcasePage from '../src/components/learn/classroom/ClassroomShowcasePage'
 
 describe('互动课堂全面重做：组件、动效、音效库与审美工作流', () => {
   beforeEach(() => {
@@ -254,33 +251,7 @@ describe('互动课堂全面重做：组件、动效、音效库与审美工作�
     })
   })
 
-  describe('4. 展示页音效页签与提示词审美传授', () => {
-    it('ClassroomShowcasePage 展示音效库标签页并支持试听按钮', async () => {
-      const host = document.createElement('div')
-      document.body.appendChild(host)
-      const root = createRoot(host)
-      await act(async () => {
-        root.render(<ClassroomShowcasePage />)
-      })
-
-      expect(host.textContent).toContain('音效库 (22)')
-      expect(host.textContent).toContain('课堂音效库 (WebAudio SFX)')
-      expect(host.textContent).toContain('清泉玉磬')
-
-      const sfxTab = Array.from(host.querySelectorAll('button')).find((b) =>
-        b.textContent?.includes('音效库'),
-      ) as HTMLButtonElement
-      await act(async () => {
-        sfxTab.click()
-      })
-      expect(host.textContent).toContain('朱印落定')
-
-      await act(async () => {
-        root.unmount()
-      })
-      host.remove()
-    })
-
+  describe('4. 提示词审美传授', () => {
     it('WORKFLOWS_GUIDE 向生成课堂的 Agent 传授舞台构图、动效编排与音效审美纪律', () => {
       expect(WORKFLOWS_GUIDE).toContain('一幕一焦点')
       expect(WORKFLOWS_GUIDE).toContain('音效是标点')

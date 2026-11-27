@@ -2,7 +2,7 @@
  * 三通道（user / agent / work）与派发器：来源、时间戳、入站落账、忙时排队与跳边界注入。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { ChannelMessage, Conversation } from '../src/agent/types'
+import type { ChannelMessage, Conversation, ConversationMessage } from '../src/agent/types'
 import type { ChatSendInput } from '../src/agent/roleWork/types'
 import { installRoleWork } from '../src/agent/sandbox/api/roleWork'
 import type { SandboxOptions } from '../src/agent/sandbox/types'
@@ -120,6 +120,21 @@ describe('chat.send 三通道', () => {
     expect(appended[0]!.message.ts).toBeGreaterThan(0)
   })
 
+  it('user 通道：引用条单独显示，正文不再重复拼接整段引文', async () => {
+    const quoted: ConversationMessage = {
+      id: 'm-user',
+      role: 'user',
+      parts: [{ type: 'text', text: '继续啊？' }],
+      ts: 1_700_000_000_000,
+    }
+    const { chat, appended } = makeChat({
+      messageOf: (id) => (id === 'm-user' ? quoted : null),
+    })
+    await chat.send({ channel: 'user', text: '一张网图，测通道用。', messageId: 'm-user' })
+    expect(appended[0]!.message.text).toBe('一张网图，测通道用。')
+    expect(appended[0]!.message.quoteMessageId).toBe('m-user')
+  })
+
   it('user 通道：text 里的简短 / 详细分隔线原样保留在同一封消息里', async () => {
     const { chat, appended } = makeChat()
     await chat.send({ channel: 'user', text: '极限讲义更新了。\n\n---\n\n补了定义和两道例题。' })
@@ -223,6 +238,29 @@ describe('chat.send 三通道', () => {
     ).toMatchObject({ ok: true })
     expect(passed!.silent).toBe(true)
     expect(await chat.send({ channel: 'user', text: '偷偷说', silent: true })).toMatchObject({ ok: false })
+  })
+
+  it('沙箱 API 入口：attachments 接受字符串 URL，不再被静默丢掉', async () => {
+    let passed: ChatSendInput | null = null
+    const api: Record<string, unknown> = {}
+    installRoleWork(
+      api,
+      {
+        chat: {
+          send: (input: ChatSendInput) => {
+            passed = input
+            return { ok: true, channel: 'user' }
+          },
+        },
+      } as unknown as SandboxOptions,
+      [],
+    )
+    const chat = api.chat as { send: (input: ChatSendInput) => Promise<{ ok: boolean }> }
+    const url = 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/640px-Cat03.jpg'
+    expect(await chat.send({ channel: 'user', text: '一张网图', attachments: [url] })).toMatchObject({
+      ok: true,
+    })
+    expect(passed!.attachments).toEqual([{ image: url }])
   })
 
   it('group 通道：把 to 并进 cc 交给宿主，不落普通私聊流水', async () => {

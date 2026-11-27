@@ -10,6 +10,10 @@ import {
   listClassroomAnimations,
   registerClassroomComponent,
   registerClassroomAnimation,
+  registerClassroomSound,
+  unregisterClassroomComponent,
+  unregisterClassroomAnimation,
+  unregisterClassroomSound,
   type ClassroomComponentDef,
   type ClassroomAnimationDef,
 } from '../../../learn/classroom/registry'
@@ -48,7 +52,11 @@ export function installClassroom(api: Record<string, unknown>, opts: SandboxOpti
       const o = asRecord(args[0])
       const source = o.source === 'builtin' || o.source === 'external' ? o.source : undefined
       const query = typeof o.query === 'string' ? o.query : undefined
-      const components = listClassroomComponents({ source, query })
+      const components = listClassroomComponents({ source, query }).map((component) => {
+        const safe = { ...component } as Record<string, unknown>
+        delete safe.component
+        return safe
+      }) as unknown as ClassroomComponentDef[]
       return { ok: true, components }
     },
     log,
@@ -93,18 +101,18 @@ export function installClassroom(api: Record<string, unknown>, opts: SandboxOpti
   wrapApi(
     api,
     'classroom.registerComponent',
-    (args): { ok: boolean; message?: string } => {
+    async (args) => {
       const o = asRecord(args[0])
       const tag = typeof o.tag === 'string' ? o.tag : ''
       const name = typeof o.name === 'string' ? o.name : tag
       const description = typeof o.description === 'string' ? o.description : ''
-      const template = typeof o.template === 'string' ? o.template : ''
       const category = (o.category as ClassroomComponentDef['category']) || 'custom'
       const defaultProps =
         typeof o.defaultProps === 'object' && o.defaultProps !== null
           ? (o.defaultProps as Record<string, string>)
           : undefined
       const example = typeof o.example === 'string' ? o.example : undefined
+      const source = typeof o.source === 'string' ? o.source : undefined
 
       if (!tag) {
         return { ok: false, message: '必须指定组件标签名 tag，如 ui-experiment' }
@@ -113,10 +121,10 @@ export function installClassroom(api: Record<string, unknown>, opts: SandboxOpti
         tag,
         name,
         description,
-        template,
         category,
         defaultProps,
         example,
+        source,
       })
     },
     log,
@@ -126,7 +134,7 @@ export function installClassroom(api: Record<string, unknown>, opts: SandboxOpti
   wrapApi(
     api,
     'classroom.registerAnimation',
-    (args): { ok: boolean; message?: string } => {
+    async (args) => {
       const o = asRecord(args[0])
       const verb = typeof o.verb === 'string' ? o.verb : ''
       const name = typeof o.name === 'string' ? o.name : verb
@@ -138,6 +146,8 @@ export function installClassroom(api: Record<string, unknown>, opts: SandboxOpti
       const duration = typeof o.duration === 'number' ? o.duration : undefined
       const easing = typeof o.easing === 'string' ? o.easing : undefined
       const example = typeof o.example === 'string' ? o.example : undefined
+      const recommendedSfx = typeof o.recommendedSfx === 'string' ? o.recommendedSfx : undefined
+      const source = typeof o.source === 'string' ? o.source : undefined
 
       if (!verb) {
         return { ok: false, message: '必须指定动效动作名 verb，如 spiralZoom' }
@@ -149,8 +159,57 @@ export function installClassroom(api: Record<string, unknown>, opts: SandboxOpti
         keyframes,
         duration,
         easing,
+        recommendedSfx,
         example,
+        source,
       })
+    },
+    log,
+  )
+
+  // 8. 注册新音效（外部 TSX 文件：doc-design/classroom-sound--<name>.tsx）
+  wrapApi(
+    api,
+    'classroom.registerSound',
+    async (args) => {
+      const o = asRecord(args[0])
+      const name = typeof o.name === 'string' ? o.name : ''
+      const label = typeof o.label === 'string' ? o.label : name
+      const description = typeof o.description === 'string' ? o.description : ''
+      const category =
+        typeof o.category === 'string' && VALID_SFX_CATEGORIES.has(o.category as SfxCategory)
+          ? (o.category as SfxCategory)
+          : undefined
+      const source = typeof o.source === 'string' ? o.source : undefined
+      if (!name) return { ok: false, message: '必须指定音效名 name，如 wood-chime' }
+      return registerClassroomSound({
+        name,
+        label,
+        description,
+        category,
+        mood: typeof o.mood === 'string' ? o.mood : undefined,
+        use: typeof o.use === 'string' ? o.use : undefined,
+        defaultDuration: typeof o.defaultDuration === 'number' ? o.defaultDuration : undefined,
+        recommended: o.recommended === true,
+        source,
+      })
+    },
+    log,
+  )
+
+  // 9. 注销外部注册项（内置组件 / 动效 / 音效不可删）
+  wrapApi(
+    api,
+    'classroom.unregister',
+    async (args) => {
+      const o = asRecord(args[0])
+      const kind = typeof o.kind === 'string' ? o.kind : ''
+      const id = asText(o.id || o.tag || o.verb || o.name).trim()
+      if (!id) return { ok: false, message: '缺少 id（组件 tag / 动效 verb / 音效 name）' }
+      if (kind === 'component') return unregisterClassroomComponent(id).then((ok) => ({ ok, message: ok ? '已注销组件' : '未找到外部组件或内置组件不可删' }))
+      if (kind === 'animation') return unregisterClassroomAnimation(id).then((ok) => ({ ok, message: ok ? '已注销动效' : '未找到外部动效或内置动效不可删' }))
+      if (kind === 'sound') return unregisterClassroomSound(id).then((ok) => ({ ok, message: ok ? '已注销音效' : '未找到外部音效' }))
+      return { ok: false, message: 'kind 必须是 component / animation / sound' }
     },
     log,
   )

@@ -30,6 +30,7 @@ import type {
   CapsFilesDeleteRequest, CapsFilesDeleteResult, CapsFilesListRequest, CapsFilesListResult,
   CapsFilesRetrieveRequest, CapsFilesRetrieveResult, CapsOcrRequest, CapsOcrResult,
   CapsSttRequest, CapsSttResult, CapsTtsRequest, CapsTtsResult,
+  DevConsoleOpenResult, DevLogEntry, DesignPreviewStatus,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -54,6 +55,7 @@ export type {
   CapsFilesDeleteRequest, CapsFilesDeleteResult, CapsFilesListRequest, CapsFilesListResult,
   CapsFilesRetrieveRequest, CapsFilesRetrieveResult, CapsOcrRequest, CapsOcrResult,
   CapsSttRequest, CapsSttResult, CapsTtsRequest, CapsTtsResult,
+  DevConsoleOpenResult, DevLogEntry, DesignPreviewStatus,
 }
 
 export type PluginList =
@@ -360,6 +362,23 @@ export interface NativeBridge {
     onState(cb: (payload: unknown) => void): () => void
   }
   /**
+   * 开发者控制台（独立 BrowserWindow，`?devConsole=1` 分支）：主窗口那侧 open，
+   * 控制台窗口那侧 logs / onEntry。日志缓冲在主进程，晚开也能回放之前的日志。
+   */
+  devConsole: {
+    /** 打开独立控制台窗口；已经开着就聚焦并回 reused */
+    open(): Promise<DevConsoleOpenResult>
+    /** 当前日志快照（仅控制台窗口可读） */
+    logs(): Promise<DevLogEntry[]>
+    /** 订阅实时日志；返回取消订阅函数 */
+    onEntry(cb: (entry: DevLogEntry) => void): () => void
+  }
+  /** 设计预览内置 HTTP 服务（只读扫描 doc-design，浏览器打开预览画布） */
+  designPreview: {
+    status(): Promise<DesignPreviewStatus>
+    ensure(): Promise<DesignPreviewStatus>
+  }
+  /**
    * 模型能力（TTS / STT / OCR / Files API，设置 → 模型 → 能力接入）。
    * 与 electron/preload.ts 那份是同一套契约（渲染层不能 import 主进程的文件，只能各声明一份）；
    * 网络调用在主进程，engine 字段由渲染层读好配置传进去。
@@ -451,14 +470,15 @@ export interface NativeBridge {
     openStream(url: string, headers?: Record<string, string>): Promise<VideoStreamOpenResult>
   }
   /**
-   * 内置浏览器页签（见 src/components/learn/web 与 electron/app/webSession）。
+   * 网页页签 / 智能体浏览器（见 src/components/learn/workspace 与 electron/app/webSession）。
    * 三条都是主进程推、渲染层收：onOpenTab —— 网页弹窗 / target=_blank 要开的新页签
-   * （拦截与协议判定在主进程）；onShortcut —— 焦点在网页里时按下的应用快捷键，
-   * 转发回来当 DOM 键用；onGuestInput —— guest 里的鼠标指针事件（electron/guestPreload
-   * 上报），渲染层据此在 <webview> 元素上合成可冒泡的 PointerEvent。返回取消订阅函数。
+   * （wcId 用来判断是不是智能体 guest；是的话回流成后台会话，否则才开用户页签）；
+   * onShortcut —— 焦点在网页里时按下的应用快捷键，转发回来当 DOM 键用；
+   * onGuestInput —— guest 里的鼠标指针事件（electron/guestPreload 上报），
+   * 渲染层据此在 <webview> 元素上合成可冒泡的 PointerEvent。返回取消订阅函数。
    */
   browser: {
-    onOpenTab(cb: (url: string) => void): () => void
+    onOpenTab(cb: (url: string, wcId?: number) => void): () => void
     onShortcut(cb: (key: string) => void): () => void
     onGuestInput(
       cb: (p: { wcId: number; type: string; button: number; buttons: number; x: number; y: number }) => void,

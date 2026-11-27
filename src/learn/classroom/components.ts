@@ -7,6 +7,8 @@
 import { getClassroomComponent, listClassroomComponents } from './registry'
 import { CLASSROOM_ICONS, escapeAttr, getCommonAttributes, htmlToElement } from './componentIcons'
 import { transformExtendedElement } from './componentsExtended'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 const SPLIT_RATIOS: Record<string, string> = {
   '1:1': '1fr 1fr',
@@ -373,20 +375,30 @@ function transformCustomElement(el: Element): Element {
       if (extended) return extended
 
       const customDef = getClassroomComponent(tagName)
-      if (customDef && customDef.template) {
-        let tpl = customDef.template
+      if (customDef) {
+        const attrs: Record<string, string> = {}
         for (let i = 0; i < el.attributes.length; i++) {
           const attr = el.attributes[i]
-          tpl = tpl.replace(new RegExp(`\\{\\{${attr.name}\\}\\}`, 'g'), attr.value)
+          attrs[attr.name] = attr.value
         }
-        if (customDef.defaultProps) {
-          for (const [k, v] of Object.entries(customDef.defaultProps)) {
-            tpl = tpl.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v)
+        const props = { ...(customDef.defaultProps ?? {}), ...attrs }
+        if (customDef.component) {
+          try {
+            const out = renderToStaticMarkup(
+              createElement(customDef.component, {
+                tag: tagName,
+                content: el.innerHTML,
+                attrs,
+                props,
+              }),
+            )
+            if (out) {
+              return htmlToElement(`<div ${getCommonAttributes(el)}>${out}</div>`)
+            }
+          } catch (err) {
+            console.warn('[classroom] 外部组件 component 渲染失败，保留未展开节点:', err)
           }
         }
-        tpl = tpl.replace(/\{\{(content|children)\}\}/g, el.innerHTML)
-        const attrs = getCommonAttributes(el)
-        return htmlToElement(`<div ${attrs}>${tpl}</div>`)
       }
       return el
     }

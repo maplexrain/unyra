@@ -111,7 +111,12 @@ export function createChatOps(deps: ChatOpsDeps): ChatSandboxApi {
       if (deliveryFrom && !forwardedDelivery) {
         return { ok: false, error: '找不到消息「' + deliveryFrom + '」上的交付账；先核对来源消息 id' }
       }
-      const body = [text, quoteBlock(quoted)].filter(Boolean).join('\n\n')
+      // 用户通道的引用由界面引用条单独显示，不再把整段引文重复拼进气泡正文；
+      // agent / group / work 的内部接收方仍需要正文里的引用上下文。
+      const body =
+        channel === 'user'
+          ? text
+          : [text, quoteBlock(quoted)].filter(Boolean).join('\n\n')
       const resolved = input.attachments?.length ? await deps.resolveAttachments(input.attachments) : undefined
       if (resolved && 'error' in resolved) return { ok: false, error: resolved.error }
       const attachments = resolved && !('error' in resolved) ? {
