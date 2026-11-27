@@ -2,7 +2,7 @@
  * useAgent 一轮的**工具装配**（从 useAgent.ts 原样搬出）：这一轮唯一的工具（execute）
  * 在这里拿到它的全部能力——沙箱基座（learnSandboxOps）、工作流排队（wf.invoke）、
  * work 管理器、MCP 外部服务、人机协作表单（ask）与权限审批、考试、记忆、等待、提醒、
- * 界面操作（ui.*）、内置浏览器（browser.*），以及交付（delivery）的登记。
+ * 界面操作（ui.*）、智能体后台浏览器（browser.*），以及交付（delivery）的登记。
  *
  * 装配只在轮首做一次：本函数返回这一轮的中止器、工具数组、交付账与全局模型解析，
  * 轮次循环（streamLoop）与收口（turnClose）从返回值里取。
@@ -193,7 +193,19 @@ export function rigTurnTools(io: {
     const deps = target.nodeId ? examDeps?.(target.nodeId, wfParams) : undefined
     return deps ? makeExamTool(deps) : undefined
   })()
-  const browserTool = browserDeps ? makeBrowserOps(browserDeps, target.goalId) : undefined
+  const roleName = agentNameOf(profileOf(agentSettings, voice as AgentProfileId), voice as AgentProfileId)
+  /*
+   * browser.* 在 agent 模式下只管理自己的后台会话：owner 固定到当前 goal + role，
+   * 不传 docArea 页签 id，也不会把用户正在看的网页当成默认目标。
+   */
+  const browserTool = browserDeps
+    ? makeBrowserOps(browserDeps, target.goalId, {
+        ...(target.goalId ? { goalId: target.goalId } : {}),
+        role: voice,
+        roleName,
+        ...(target.conversationId ? { conversationId: target.conversationId } : {}),
+      })
+    : undefined
   const workSandboxBase = {
     ...sandboxBase,
     ...(examTool ? { exam: examTool } : {}),
@@ -213,7 +225,6 @@ export function rigTurnTools(io: {
   sandboxBase.work = workManager.api
   // role 共用名录：只读；workSandboxBase 已在上方拍过快照，因此 work 不会拿到这一组
   sandboxBase.agent = { list: () => listRegisteredAgents(agentSettings) }
-  const roleName = agentNameOf(profileOf(agentSettings, voice as AgentProfileId), voice as AgentProfileId)
   const appendChannel = (convId: string, envelope: ChannelMessage): void => {
     const cur = getLatest().conversations.find((c) => c.id === convId)
     if (!cur) return

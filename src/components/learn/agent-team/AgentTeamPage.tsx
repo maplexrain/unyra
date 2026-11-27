@@ -7,6 +7,7 @@
 
 import { useEffect } from 'react'
 import { AgentSlot, type AgentSlotDeps } from '../workspace/AgentSlot'
+import AgentBrowserDock from './AgentBrowserDock'
 
 export interface AgentTeamPageProps {
   active?: boolean
@@ -46,7 +47,7 @@ export default function AgentTeamPage({
   return (
     <div
       data-agent-team-page={isFocused ? 'true' : undefined}
-      className="flex h-full w-full flex-col overflow-hidden bg-paper select-text"
+      className="relative flex h-full w-full flex-col overflow-hidden bg-paper select-text"
     >
       <AgentSlot
         deps={{
@@ -56,6 +57,7 @@ export default function AgentTeamPage({
           ...(persistLayout !== undefined ? { persistLayout } : {}),
         }}
       />
+      <AgentBrowserDock goalId={goalId} focused={isFocused} />
     </div>
   )
 }

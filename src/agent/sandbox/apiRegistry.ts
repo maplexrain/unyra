@@ -363,16 +363,17 @@ list() 回执的 rel 字段是**真实磁盘路径**：process.* 的 cwd 等需�
   ),
   g(
     'browser',
-    '内置浏览器',
-    '操作界面上的网页页签：打开、查看、切换、关闭，以及页面交互骨架索引与智能读写。',
+    '智能体后台浏览器',
+    '智能体自己的浏览器会话：打开、查看、切换、关闭，以及页面交互骨架索引与智能读写；不占文档页签，也不会自动弹前台。',
     `操作闭环：index（获取带 [id] 的语义索引大纲，穿透 Shadow DOM）→ text/inspect（展开深入读正文与状态）→ click/fill/press/scroll（居中滚动并派发完整用户动作）。
-tabId 可省略，默认操作当前激活的网页页签；目标支持索引里的编号数字（如 12）或 CSS 选择器。
+tabId 可省略，默认操作当前 agent 的活动会话；目标支持索引里的编号数字（如 12）或 CSS 选择器。
+会话独立于用户的网页页签：open 只在智能体页后台打开，不切文档区；用户可在智能体页 Dock 实时查看并接管。
 这是用户的真实登录会话：提交/支付/删除等不可逆操作先 api.ask 确认。`,
     [
-      a('open', 'browser.open(url)', '开一个网页页签', '纯关键词会当搜索词；返回 tabId，首屏已基本加载完。先 tabs 查重，别重复开同一网址。', "const tab = await api.browser.open('https://example.com')"),
-      a('tabs', 'browser.tabs()', '列存活页签', '开工第一步；之后操作按 tabId 指名。', 'const tabs = await api.browser.tabs()'),
-      a('activate', 'browser.activate(tabId)', '切到某个页签', '目标网址已经开着就 activate，不要 open。', 'await api.browser.activate(tabId)'),
-      a('close', 'browser.close(tabId | tabId[])', '关闭网页页签', '用户自己开的别动；收尾时关掉中间搜索页/试错页，留下用户可能还要看的。', 'await api.browser.close(tabId)'),
+      a('open', 'browser.open(url)', '开一个后台浏览器会话', '纯关键词会当搜索词；返回 tabId/sessionId，不创建文档页签，也不切前台。先 tabs 查重，别重复开同一网址。', "const tab = await api.browser.open('https://example.com')"),
+      a('tabs', 'browser.tabs()', '列自己的后台会话', '开工第一步；之后操作按 tabId 指名。只列当前 agent 自己的会话，不列用户网页页签。', 'const tabs = await api.browser.tabs()', { trap: '只操作自己的 b: 会话；用户正在看的网页页签不归智能体管' }),
+      a('activate', 'browser.activate(tabId)', '设为当前活动会话', '目标网址已经开着就 activate，不要 open；只切换活动会话，不弹出 Dock，也不切文档页签。', 'await api.browser.activate(tabId)'),
+      a('close', 'browser.close(tabId | tabId[])', '关闭自己的后台会话', '收尾时关掉中间搜索页/试错页；不碰用户网页页签。', 'await api.browser.close(tabId)'),
       a('index', 'browser.index(tabId?, opts?)', '获取页面语义索引大纲', '深度穿透 Shadow DOM 与 iframe，返回带 [id] 的压缩结构文本。正文区与模式化列表会自动折叠。', 'const page = await api.browser.index()'),
       a('text', 'browser.text(tabId?, target, opts?)', '深入读取节点文本', '用于解折叠正文区或抓取特定容器的完整文本，支持 { maxChars, offset } 分段。', 'const article = await api.browser.text(4)'),
       a('inspect', 'browser.inspect(tabId?, target)', '探测节点详细属性', '读取节点的 tagName、value、placeholder、href、checked、disabled 以及几何尺寸。', 'const info = await api.browser.inspect(3)'),

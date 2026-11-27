@@ -51,7 +51,7 @@ export function attachGuestEventHandlers(contents: WebContents): void {
   // 其余（data:、blob:…）直接拒
   contents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('mailto:')) void shell.openExternal(url)
-    else if (canOpenExternal(url)) mainWindow()?.webContents.send('web:openTab', url)
+    else if (canOpenExternal(url)) mainWindow()?.webContents.send('web:openTab', url, contents.id)
     return { action: 'deny' }
   })
 

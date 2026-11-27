@@ -1,17 +1,17 @@
 /**
  * 这个文件负责什么：内置浏览器的 api 装配（browser.*，见 learn/web/browserOps）——
- * 网页页签生命周期（open/tabs/activate/close）、页面读写（index/text/inspect/query）、
- * 交互（click/fill/type/press/scroll/waitFor）、截图与转图（screenshot/toImage/
- * elementImage/elementScreenshot）、落盘（toMarkdown/eval 的 saveTo）。
- * 第一参的 tabId 与目标的解析规则（parseTabAndRest / targetOf）是这里的关键口径。
+ * 智能体自己的后台会话生命周期（open/tabs/activate/close，不占文档页签）、页面读写
+ * （index/text/inspect/query）、交互（click/fill/type/press/scroll/waitFor）、截图与转图
+ * （screenshot/toImage/elementImage/elementScreenshot）、落盘（toMarkdown/eval 的 saveTo）。
+ * 第一参的 tabId/sessionId 与目标的解析规则（parseTabAndRest / targetOf）是这里的关键口径。
  */
 import { asRecord, asText } from '../refs'
 import { wrapApi } from '../wrap'
 import type { SandboxCall, SandboxOptions, BrowserTarget, BrowserEvalOpts, BrowserToMarkdownOpts } from '../types'
 
-/** 内置浏览器域：browser.* */
+/** 智能体后台浏览器域：browser.* */
 export function installBrowser(api: Record<string, unknown>, opts: SandboxOptions, log: SandboxCall[]): void {
-  // 内置浏览器（browser.*，见 learn/web/browserOps）：网页页签生命周期与基础读写
+  // 智能体后台浏览器（browser.*，见 learn/web/browserOps）：自己的会话生命周期与基础读写
   if (opts.browser) {
     const browser = opts.browser
     const isTabIdStr = (v: unknown): v is string =>

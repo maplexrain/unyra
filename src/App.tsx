@@ -30,6 +30,8 @@ import { isDarkTheme, useAppearance } from './lib/appearance'
 import GlobalVimCommandBar from './components/learn/workspace/GlobalVimCommandBar'
 import { GroupMentionPushHost } from './components/learn/workspace/GroupMentionPushHost'
 import CalculatorWindow from './components/tools/calculator/CalculatorWindow'
+import AgentBrowserHost from './components/learn/agent-team/AgentBrowserHost'
+import { agentBrowserRuntime } from './learn/web/agentBrowser'
 
 /**
  * 启动结果（用户列表 + 会话）由 main.tsx 读盘后传进来：
@@ -212,6 +214,7 @@ export default function App({ boot }: Props) {
   /** 登录：建立会话、设作用域、载入该用户的数据，再重挂载学习区 */
   const handleSignIn = useCallback(async (userId: string) => {
     const s = await sessionSignIn(userId)
+    agentBrowserRuntime.closeAll()
     await enterUserScope(s.userId)
     setSession(s)
     setActiveUserId(s.userId)
@@ -221,6 +224,7 @@ export default function App({ boot }: Props) {
 
   /** 登出：清会话与作用域；学习数据已在切换前落盘（见 enterUserScope 前的 flush） */
   const handleSignOut = useCallback(async () => {
+    agentBrowserRuntime.closeAll()
     await sessionSignOut()
     await enterUserScope(null)
     setSession(null)
@@ -236,6 +240,7 @@ export default function App({ boot }: Props) {
   const handleRootChanged = useCallback(async (dir?: string) => {
     const res = await switchRoot(dir)
     if (!res.ok) return res
+    agentBrowserRuntime.closeAll()
     setUsers(res.boot.users)
     setSession(res.boot.session)
     setActiveUserId(res.boot.session?.userId ?? null)
@@ -286,6 +291,8 @@ export default function App({ boot }: Props) {
         onOpenNotice={() => setNoticeOpen(true)}
         onOpenLan={() => setLanOpen(true)}
       />
+      {/* 智能体后台浏览器的常驻宿主：Dock 在智能体页，webview 不随页签关闭而销毁 */}
+      <AgentBrowserHost />
       {/* 群消息里 agent @用户：全局顶部推送，点击跳对应目标的智能体群聊 */}
       <GroupMentionPushHost
         userName={activeUserRecord ? displayName(activeUserRecord.profile, t('用户')) : undefined}

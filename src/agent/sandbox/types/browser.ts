@@ -1,23 +1,27 @@
 /**
- * 这个文件负责什么：沙箱类型契约的**browser（内置浏览器）**组——页签快照、页面读取、
+ * 这个文件负责什么：沙箱类型契约的 **browser（智能体后台浏览器）** 组——会话快照、页面读取、
  * DOM 交互与截图等各方法的入参/返回，以及宿主实现 BrowserOps（见 learn/web/browserOps）。
  * 原先与其它组同写在 src/agent/sandbox/types.ts，按 API 能力组拆到这里；形状逐字未动，
  * 对外一律经门面 src/agent/sandbox/types.ts 原样转出，调用方 import 路径不变。
  */
 
-/** browser.tabs 的元素：一枚存活网页页签的快照 */
+/** browser.tabs 的元素：一枚存活的智能体后台会话（或旧路径里的用户网页页签）快照 */
 export interface BrowserTabInfo {
   tabId: string
   url: string
   title: string
   active: boolean
-  /** 页签所在分组格的 id */
+  /** 页签所在分组格的 id；智能体会话固定为 agent */
   group: string
-  /** 来源标识：通过文件节点打开的标记为 'fileNode'，用户主动新开的标记为 'user' */
-  source?: 'fileNode' | 'user'
+  /** 来源标识：文件节点 / 用户主动新开 / 智能体自己的后台会话 */
+  source?: 'fileNode' | 'user' | 'agent'
   fileNodeId?: string
   fileNodeTitle?: string
   goalId?: string
+  /** 智能体会话的额外状态（source=agent 时存在） */
+  phase?: string
+  control?: 'agent' | 'user' | 'paused'
+  currentAction?: string
 }
 
 export type BrowserTarget = number | string
@@ -292,17 +296,18 @@ export interface BrowserEvalResult {
 }
 
 /**
- * 内置浏览器（browser.*）的宿主实现（见 learn/web/browserOps）。
- * 涵盖网页页签生命周期（open / tabs / activate / close）与基础读写（index / text / inspect / click / fill / type / press / scroll / query / waitFor / screenshot / eval）。
+ * 智能体后台浏览器（browser.*）的宿主实现（见 learn/web/browserOps）。
+ * agent 模式下它管理独立的后台会话，不再生成/激活文档区网页页签；用户网页页签仍由原 docArea 路径负责。
+ * 涵盖生命周期（open / tabs / activate / close）与基础读写（index / text / inspect / click / fill / type / press / scroll / query / waitFor / screenshot / eval）。
  */
 export interface BrowserOps {
-  /** 开一个网页页签（纯关键词当搜索词处理）；回 tabId，返回时首屏基本加载完 */
-  open(url: string): Promise<{ tabId: string; url: string; note?: string }>
-  /** 全部存活的网页页签（信封 { tabs }——同组接口一致，别回裸数组） */
+  /** 开一个后台会话（纯关键词当搜索词处理）；回 sessionId（tabId 同义），绝不切文档页签 */
+  open(url: string): Promise<{ tabId: string; sessionId?: string; url: string; note?: string }>
+  /** 存活会话（信封 { tabs }——同组接口一致，别回裸数组） */
   tabs(): { tabs: BrowserTabInfo[] }
-  /** 把某个页签切到前台 */
+  /** 把某个会话设为该 agent 的活动会话；不弹出 Dock，也不切文档页签 */
   activate(tabId: string): { ok: true }
-  /** 关掉某个页签（不弹确认）；给数组就批量关（试错页签收尾用——用户自己开的别关） */
+  /** 关掉自己的智能体会话（不弹确认）；给数组就批量关；绝不关闭用户网页页签 */
   close(tabId: string | string[]): { ok: true }
   /** 获取当前页面的压缩语义索引大纲（含 [id] 编号与 Shadow DOM 穿透） */
   index(tabId?: string, opts?: BrowserIndexOpts): Promise<BrowserIndexResult>

@@ -680,17 +680,18 @@ const api = {
   },
 
   /**
-   * 内置浏览器页签（见 src/components/learn/web 与 electron/app/webSession）。
+   * 网页页签 / 智能体浏览器（见 src/components/learn/workspace 与 electron/app/webSession）。
    * 两条都是主进程推、渲染层收：
-   * - onOpenTab —— 网页的弹窗 / target=_blank 要开的新页签（拦截与协议判定在主进程）；
+   * - onOpenTab —— 网页的弹窗 / target=_blank 要开的新页签（wcId 用来判断是不是智能体
+   *   guest；是的话回流成后台会话，否则才开用户页签）；
    * - onShortcut —— 焦点在网页里时按下的应用快捷键（Ctrl+Q/W/L），转发回来当 DOM 键用。
    * - onGuestInput —— guest 里的鼠标指针事件（electron/guestPreload 上报），
    *   渲染层据此在 <webview> 元素上合成可冒泡的 PointerEvent。
    * 都返回取消订阅函数。
    */
   browser: {
-    onOpenTab: (cb: (url: string) => void): (() => void) => {
-      const listener = (_e: unknown, url: string): void => cb(url)
+    onOpenTab: (cb: (url: string, wcId?: number) => void): (() => void) => {
+      const listener = (_e: unknown, url: string, wcId?: number): void => cb(url, wcId)
       ipcRenderer.on('web:openTab', listener)
       return () => ipcRenderer.removeListener('web:openTab', listener)
     },

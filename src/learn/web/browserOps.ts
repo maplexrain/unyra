@@ -29,6 +29,8 @@ import { normalizeWebInput } from '../webUrl'
 import { buildRuntimeExecScript } from './browserRuntimeScript'
 import { webviewOf } from './webviewRegistry'
 import { saveScreenshot } from '../screenshots'
+import { agentBrowserRuntime } from './agentBrowser'
+import type { AgentBrowserOwner, AgentBrowserRuntime } from './agentBrowser'
 
 /**
  * browser.* 的宿主实现（沙箱里 api.browser.* 的真身，见 agent/sandbox/types 的 BrowserOps）。
@@ -45,6 +47,8 @@ export interface BrowserDeps {
   webMeta: Record<string, WebTabMeta>
   /** 在指定网页访客环境（guest）中执行 JavaScript 并获取返回值 */
   execJs?: (tabId: string, script: string) => Promise<unknown>
+  /** 智能体后台浏览器会话池；存在且传入 owner 时走会话模式，不再走 docArea 页签 */
+  agentBrowser?: AgentBrowserRuntime
 }
 
 type WebTabRef = Extract<TabRef, { kind: 'web' }>
@@ -55,6 +59,26 @@ function hostOf(url: string): string {
   } catch {
     return url
   }
+}
+
+/** 把 runtime 脚本入口映射成人在 Dock 里看得懂的动作名；不把 fill/type 的内容写进状态。 */
+function labelOfScript(fnCall: string): string {
+  if (fnCall.includes('__agentIndex(')) return '读取页面结构'
+  if (fnCall.includes('__agentText(')) return '读取正文'
+  if (fnCall.includes('__agentInspect(')) return '探测元素'
+  if (fnCall.includes('__agentClick(')) return '点击元素'
+  if (fnCall.includes('__agentFill(')) return '填写输入'
+  if (fnCall.includes('__agentType(')) return '输入文本'
+  if (fnCall.includes('__agentPress(')) return '按键'
+  if (fnCall.includes('__agentScroll(')) return '滚动页面'
+  if (fnCall.includes('__agentQuery(')) return '查找元素'
+  if (fnCall.includes('__agentWaitFor(')) return '等待元素'
+  if (fnCall.includes('__agentPrepareElementCapture(')) return '准备元素截图'
+  if (fnCall.includes('__agentGetCaptureSlice(')) return '截取元素'
+  if (fnCall.includes('__agentCleanupElementCapture(')) return '还原页面'
+  if (fnCall.includes('__agentToMarkdown(')) return '提取 Markdown'
+  if (fnCall.includes('__agentEval(')) return '执行页面脚本'
+  return '页面操作'
 }
 
 async function stitchSlicesToDataUrl(
@@ -100,11 +124,14 @@ async function stitchSlicesToDataUrl(
   return slices[0].dataUrl
 }
 
-export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps {
+export function makeBrowserOps(deps: BrowserDeps, _goalId?: string, owner?: AgentBrowserOwner): BrowserOps {
+  const agentBrowser = deps.agentBrowser ?? agentBrowserRuntime
+  const agentMode = !!(agentBrowser && owner)
+
   const titleOf = (tabId: string, ref: WebTabRef): string =>
     deps.webMeta?.[tabId]?.title ?? (ref.url ? hostOf(ref.url) : '（起始页）')
 
-  /** 解析目标页签：给 tabId 就查；不给就取焦点格正在看着的那个网页页签 */
+  /** 解析用户网页页签：给 tabId 就查；不给就取焦点格正在看着的那个网页页签（仅旧路径） */
   const resolveTab = (tabId?: string): { tabId: string; ref: WebTabRef } => {
     const s = deps.getLatest()
     if (tabId) {
@@ -122,12 +149,40 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
     return { tabId: tab.id, ref: tab.ref }
   }
 
-  /** 在页面访客进程中执行代码并拿到返回值 */
-  const executeInPage = async <T>(tabId: string | undefined, fnCall: string): Promise<T> => {
-    const { tabId: resolvedId } = resolveTab(tabId)
-    const script = buildRuntimeExecScript(fnCall)
+  /** 智能体会话模式：只解析自己的 b: 会话，绝不回落到用户网页页签 */
+  const resolveSessionId = (tabId?: string): string => {
+    if (!agentBrowser || !owner) throw new Error('当前没有接上智能体浏览器运行时')
+    const sessionId = tabId ?? agentBrowser.activeFor(owner)?.sessionId
+    if (!sessionId) {
+      throw new Error('还没有智能体浏览器会话。先 api.browser.open("https://…") 开一个后台页面。')
+    }
+    if (!sessionId.startsWith('b:')) {
+      throw new Error('这是用户网页页签，不属于智能体浏览器：' + sessionId + '。智能体只操作自己 open 出来的会话。')
+    }
+    if (!agentBrowser.isOwnedBy(sessionId, owner)) {
+      throw new Error('没有这个智能体浏览器会话：' + sessionId + '。先 api.browser.tabs() 查看自己的会话。')
+    }
+    return sessionId
+  }
 
+  type ResolvedTarget =
+    | { kind: 'session'; sessionId: string }
+    | { kind: 'tab'; tabId: string; ref: WebTabRef }
+
+  const resolveTarget = (tabId?: string): ResolvedTarget =>
+    agentMode
+      ? { kind: 'session', sessionId: resolveSessionId(tabId) }
+      : { kind: 'tab', ...resolveTab(tabId) }
+
+  /** 在页面访客进程中执行代码并拿到返回值；agent 会话会顺带记录动作状态 */
+  const executeInPage = async <T>(tabId: string | undefined, fnCall: string): Promise<T> => {
+    const script = buildRuntimeExecScript(fnCall)
+    const label = labelOfScript(fnCall)
     try {
+      if (agentMode) {
+        return (await agentBrowser!.execute(resolveSessionId(tabId), script, label)) as T
+      }
+      const { tabId: resolvedId } = resolveTab(tabId)
       if (deps.execJs) {
         return (await deps.execJs(resolvedId, script)) as T
       }
@@ -144,10 +199,32 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
     }
   }
 
+  /** 截取当前会话/页签的可见区域；智能体会话走全局 host，不依赖 docArea 激活态 */
+  const captureTarget = async (
+    target: ResolvedTarget,
+    rect?: { x: number; y: number; width: number; height: number },
+  ): Promise<any> => {
+    if (target.kind === 'session') {
+      return await agentBrowser!.capturePage(target.sessionId, rect)
+    }
+    const wv = webviewOf(target.tabId)
+    if (!wv || typeof (wv as any).capturePage !== 'function') return null
+    return await (wv as any).capturePage(rect)
+  }
+
   return {
     async open(url) {
       const target = normalizeWebInput(url)
       if (!target) throw new Error('要给出网址：api.browser.open("https://…")')
+      if (agentMode) {
+        const r = await agentBrowser!.open(owner!, target)
+        return {
+          tabId: r.sessionId,
+          sessionId: r.sessionId,
+          url: r.url,
+          note: '已在智能体页后台打开；不会占用文档页签，也不会切到前台。',
+        }
+      }
       const tabId = deps.openWebTab(target)
       return {
         tabId,
@@ -155,6 +232,21 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
       }
     },
     tabs() {
+      if (agentMode) {
+        const out: BrowserTabInfo[] = agentBrowser!.list(owner!).map((s) => ({
+          tabId: s.sessionId,
+          url: s.url,
+          title: s.title || hostOf(s.url),
+          active: s.active,
+          group: 'agent',
+          source: 'agent',
+          ...(s.owner.goalId ? { goalId: s.owner.goalId } : {}),
+          phase: s.phase,
+          control: s.control,
+          ...(s.currentAction ? { currentAction: s.currentAction } : {}),
+        }))
+        return { tabs: out }
+      }
       const s = deps.getLatest()
       const out: BrowserTabInfo[] = []
       for (const g of s.docArea.groups) {
@@ -178,6 +270,11 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
       return { tabs: out }
     },
     activate(tabId) {
+      if (agentMode) {
+        const sessionId = resolveSessionId(tabId)
+        agentBrowser!.setActive(sessionId)
+        return { ok: true }
+      }
       if (!groupIdOfTab(deps.getLatest().docArea, tabId)) {
         throw new Error('没有这个网页页签：' + tabId + '。先 api.browser.tabs() 看一眼存活的页签。')
       }
@@ -186,6 +283,18 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
     },
     close(tabId) {
       const ids = Array.isArray(tabId) ? tabId : [tabId]
+      if (agentMode) {
+        for (const id of ids) {
+          if (!id.startsWith('b:')) {
+            throw new Error('用户网页页签不属于智能体浏览器：' + id + '。智能体只关闭自己 open 出来的会话。')
+          }
+          if (!agentBrowser!.isOwnedBy(id, owner!)) {
+            throw new Error('没有这个智能体浏览器会话：' + id + '。先 api.browser.tabs() 查看自己的会话。')
+          }
+        }
+        agentBrowser!.close(ids)
+        return { ok: true }
+      }
       for (const id of ids) {
         const group = groupIdOfTab(deps.getLatest().docArea, id)
         if (!group) {
@@ -207,12 +316,25 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
     async click(tabId, target: BrowserTarget, opts) {
       const sBefore = deps.getLatest()
       const tabsBefore = sBefore.docArea.groups.flatMap((g) => g.tabs).map((t) => t.id)
+      const sessionsBefore = agentMode ? agentBrowser!.list(owner!).map((s) => s.sessionId) : []
       const r = await executeInPage<BrowserClickResult>(
         tabId,
         `window.__agentClick(${JSON.stringify(target)}, ${JSON.stringify(opts ?? {})})`,
       )
       if (opts?.waitAfterMs && opts.waitAfterMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, opts.waitAfterMs))
+      }
+      if (agentMode) {
+        // target=_blank 在智能体浏览器里会回流成新的 b: 会话，不落到 docArea；
+        // 给 agent 回填新会话 id，保持和旧页签模式一样的 openedTabId 语义。
+        const newSessionId = agentBrowser!.list(owner!)
+          .map((s) => s.sessionId)
+          .find((id) => !sessionsBefore.includes(id))
+        if (newSessionId) {
+          r.openedTabId = newSessionId
+          r.navigated = true
+        }
+        return r
       }
       const sAfter = deps.getLatest()
       const tabsAfter = sAfter.docArea.groups.flatMap((g) => g.tabs).map((t) => t.id)
@@ -260,15 +382,11 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
       if (opts?.target !== undefined && opts?.target !== null && opts?.target !== '') {
         return this.toImage(tabId, opts.target, opts)
       }
-      const { tabId: resolvedId } = resolveTab(tabId)
-      const wv = webviewOf(resolvedId)
-      if (!wv && !deps.execJs) {
-        return { ok: false, error: '未找到网页视图实例（页签可能未激活或未渲染）' }
-      }
+      const target = resolveTarget(tabId)
       try {
         let nativeImg: any = null
-        if (typeof (wv as any).capturePage === 'function') {
-          nativeImg = await (wv as any).capturePage()
+        if (target.kind === 'session' || webviewOf(target.tabId)) {
+          nativeImg = await captureTarget(target)
         }
         if (nativeImg && typeof nativeImg.toDataURL === 'function') {
           const dataUrl = nativeImg.toDataURL()
@@ -296,9 +414,9 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
       }
     },
     async toImage(tabId, target: BrowserTarget, opts?: BrowserToImageOpts): Promise<BrowserToImageResult> {
-      const { tabId: resolvedId } = resolveTab(tabId)
-      const wv = webviewOf(resolvedId)
-      if (!wv && !deps.execJs) {
+      const resolved = resolveTarget(tabId)
+      const pinnedId = resolved.kind === 'session' ? resolved.sessionId : resolved.tabId
+      if (resolved.kind === 'tab' && !webviewOf(resolved.tabId) && !deps.execJs) {
         return { ok: false, error: '未找到网页视图实例（页签可能未激活或未渲染）' }
       }
 
@@ -317,7 +435,7 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
         viewportH?: number
         tag?: string
         error?: string
-      }>(tabId, `window.__agentPrepareElementCapture(${JSON.stringify(target)}, ${JSON.stringify(opts ?? {})})`)
+      }>(pinnedId, `window.__agentPrepareElementCapture(${JSON.stringify(target)}, ${JSON.stringify(opts ?? {})})`)
 
       if (!prep || !prep.ok) {
         return { ok: false, error: prep?.error || '准备元素截图失败' }
@@ -366,11 +484,11 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
             ok: boolean
             rect: { x: number; y: number; width: number; height: number }
             error?: string
-          }>(tabId, `window.__agentGetCaptureSlice(${JSON.stringify(token)}, 0)`)
+          }>(pinnedId, `window.__agentGetCaptureSlice(${JSON.stringify(token)}, 0)`)
 
           let nativeImg: any = null
-          if (typeof (wv as any).capturePage === 'function') {
-            nativeImg = await (wv as any).capturePage(sliceInfo?.rect)
+          if (resolved.kind === 'session' || webviewOf(resolved.tabId)) {
+            nativeImg = await captureTarget(resolved, sliceInfo?.rect)
           }
 
           if (nativeImg && typeof nativeImg.toDataURL === 'function') {
@@ -415,7 +533,7 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
             rect: { x: number; y: number; width: number; height: number }
             done?: boolean
             error?: string
-          }>(tabId, `window.__agentGetCaptureSlice(${JSON.stringify(token)}, ${currentOffsetY})`)
+          }>(pinnedId, `window.__agentGetCaptureSlice(${JSON.stringify(token)}, ${currentOffsetY})`)
 
           if (!sliceInfo || !sliceInfo.ok) break
 
@@ -423,8 +541,8 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
           await new Promise((r) => setTimeout(r, 45))
 
           let nativeImg: any = null
-          if (typeof (wv as any).capturePage === 'function') {
-            nativeImg = await (wv as any).capturePage(sliceInfo.rect)
+          if (resolved.kind === 'session' || webviewOf(resolved.tabId)) {
+            nativeImg = await captureTarget(resolved, sliceInfo.rect)
           }
 
           if (nativeImg && typeof nativeImg.toDataURL === 'function') {
@@ -478,7 +596,7 @@ export function makeBrowserOps(deps: BrowserDeps, _goalId?: string): BrowserOps 
       } finally {
         // 确保无论成功失败，页面受阻样式和滚动位置 100% 还原
         try {
-          await executeInPage(tabId, `window.__agentCleanupElementCapture(${JSON.stringify(token)})`)
+          await executeInPage(pinnedId, `window.__agentCleanupElementCapture(${JSON.stringify(token)})`)
         } catch (e) {}
       }
     },

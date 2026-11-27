@@ -20,7 +20,7 @@ export const WORKFLOWS_GUIDE = `## 内置工作流与任务规程
 - **超级实验室 (\`superlab\`)**：问清想做什么实验，生成可交互超级文档（参数: \`target\`, \`shell\`）。
 - **了解 (\`explain\`)**：就选中的文字写一条两三句的注解，划在正文上（参数: \`target\`, \`term\`, \`occurrence\`, \`snippet\`）。
 - **修复函数图像 (\`plot-fix\`)**：函数图像渲染失败时按报错与区间一次改完（参数: \`target\`, \`nodeTitle\`, \`reason\`, \`range\`, \`start\`, \`end\`, \`source\`）。
-- **浏览器操作 (\`browser-use\`)**：替用户操作内置浏览器（参数: \`target\`）——规矩就是沙箱速查里 api.browser 那组的闭环纪律（index → 读 → 写、看图干活、不可逆先 ask）。
+- **浏览器操作 (\`browser-use\`)**：替用户操作智能体后台浏览器（参数: \`target\`）——规矩就是沙箱速查里 api.browser 那组的闭环纪律（index → 读 → 写、看图干活、不可逆先 ask）。
 - **生成课堂 (\`classroom\`)**：为课堂节点生成 16:9 画布动态课件——画面、DOM 视觉动作与语音讲解流（参数: \`target\`）。
 - **压缩上下文 (\`compact\`)**：把前面的对话折成一份高保真交接摘要。
 

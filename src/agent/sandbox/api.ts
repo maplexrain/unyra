@@ -96,7 +96,7 @@ export function buildApi(
   installLearn(api, opts, log)
   // 网络域：fetch / web.fetch / web.search（批量 ≤5 + maxChars 的敏感口径在 api/web.ts）
   installWeb(api, opts, log)
-  // 内置浏览器域：browser.*
+  // 智能体后台浏览器域：browser.*
   installBrowser(api, opts, log)
   // 宿主交互域：mcp / userInfo / wait / ask / tiktok
   installHost(api, opts, log)
