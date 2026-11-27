@@ -13,7 +13,6 @@ import {
 import {
   ALL_AGENTS_COMMON_PREFIX,
   COMMON_ALL_AGENTS_PREFIX_PROMPT,
-  COMMON_TURTLE_CLAN_PROMPT,
   COMMON_EXECUTION_PREFIX_PROMPT,
   getAgentPromptSections,
   buildFreeChatSystem,
@@ -25,7 +24,6 @@ import {
   buildFixerSystem,
 } from '../src/learn/ai'
 import { SHARED_AGENT_PREFIX } from '../src/learn/ai/agentSharedPrefix'
-import { TURTLE_CLAN_GUIDE } from '../src/learn/ai/turtleClan'
 import type { AgentTeamMode } from '../src/components/learn/agent-team/conversationList'
 
 describe('agentPinning 置顶与排序机制', () => {
@@ -112,24 +110,19 @@ describe('agentPinning 置顶与排序机制', () => {
 
 describe('提示词分段与共同提示词独立性', () => {
   it('共同提示词独立导出且与原始总纲/前缀完全一致', () => {
-    expect(COMMON_TURTLE_CLAN_PROMPT).toBe(TURTLE_CLAN_GUIDE)
     expect(COMMON_ALL_AGENTS_PREFIX_PROMPT).toBe(ALL_AGENTS_COMMON_PREFIX)
     expect(COMMON_EXECUTION_PREFIX_PROMPT).toBe(SHARED_AGENT_PREFIX)
   })
 
-  it('身份总纲不再教「称呼兄弟」，排行只在总纲出现，不在每个 role 里复述', () => {
-    expect(TURTLE_CLAN_GUIDE).not.toContain('称呼兄弟')
-    expect(TURTLE_CLAN_GUIDE).not.toContain('自报家门')
-    expect(TURTLE_CLAN_GUIDE).toContain('禁止在每条回复开头自报身份')
-    expect(TURTLE_CLAN_GUIDE).toContain('老二 · 龟二 / 导师龟（tutor）')
-    expect(TURTLE_CLAN_GUIDE).toContain('老大 · 龟一 / 经理龟（dispatcher）')
-    expect(buildDispatcherSystem()).not.toContain('导师龟是二弟/老二')
-    expect(buildTeacherSystem()).not.toContain('经理龟是大哥')
+  it('角色段只写自己的身份，不复述团队排行或名册', () => {
+    expect(buildDispatcherSystem()).not.toContain('龟门')
+    expect(buildTeacherSystem()).not.toContain('导师龟是二弟/老二')
     expect(buildTeacherSystem()).toContain('silent: true')
+    expect(buildTeacherSystem()).toContain('api.agent.list()')
   })
 
   it('共同基座不含任何具体身份，可原样套给外部自定义 agent', () => {
-    // 1/2 两段是全员共用；龟门身份只能出现在各 role 的「角色分工」段
+    // 1/2 两段是全员共用；具体身份只能出现在各 role 的「角色分工」段
     expect(ALL_AGENTS_COMMON_PREFIX).not.toContain('龟门')
     expect(ALL_AGENTS_COMMON_PREFIX).not.toContain('兄弟')
     expect(ALL_AGENTS_COMMON_PREFIX).not.toContain('本龟')
@@ -140,7 +133,8 @@ describe('提示词分段与共同提示词独立性', () => {
     // 身份段确实被移进了 role 层第二段
     const roleSection = getAgentPromptSections('tutor').find((s) => s.id === 'tutor-role')
     expect(roleSection?.title).toBe('角色分工')
-    expect(roleSection?.content).toContain('龟门六兄弟（身份总纲）')
+    expect(roleSection?.content).toContain('归一 Unyra')
+    expect(roleSection?.content).toContain('api.agent.list()')
     expect(roleSection?.content).toContain('<delegated_capabilities>')
   })
 

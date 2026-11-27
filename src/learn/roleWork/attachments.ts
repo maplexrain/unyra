@@ -37,17 +37,24 @@ function mimeOfName(name: string): string {
 }
 
 export async function resolveChatAttachments(
-  items: ChatAttachmentInput[],
+  items: readonly (ChatAttachmentInput | string)[],
   io: { getLatest: () => LearnStore; set: (s: LearnStore) => void; goalId?: string },
 ): Promise<{ images?: MessageImage[]; files?: MessageFile[] } | { error: string }> {
   const images: MessageImage[] = []
   const files: MessageFile[] = []
 
-  for (const item of items) {
+  for (const rawItem of items) {
+    const item: ChatAttachmentInput =
+      typeof rawItem === 'string'
+        ? /^(?:https?:|moji:static\/)/i.test(rawItem) || IMAGE_EXT.test(rawItem)
+          ? { image: rawItem }
+          : { file: rawItem }
+        : rawItem
     const raw = (item.image ?? item.file ?? '').trim()
     if (!raw) continue
     const isImage = Boolean(item.image) || IMAGE_EXT.test(raw)
-    if (isImage && !IMAGE_EXT.test(raw) && !raw.startsWith('moji:static/')) {
+    // 外链图可能没有扩展名（CDN 签名 URL 很常见）：先放过，下载后看 Content-Type。
+    if (isImage && !IMAGE_EXT.test(raw) && !raw.startsWith('moji:static/') && !/^https?:/i.test(raw)) {
       return { error: 'chat.send 的图片附件需要可识别的图片扩展名：' + raw }
     }
     const name = item.name?.trim() || nameOf(raw)
@@ -60,7 +67,11 @@ export async function resolveChatAttachments(
         const res = await fetch(raw)
         if (!res.ok) return { error: '附件下载失败（HTTP ' + res.status + '）：' + raw }
         const blob = await res.blob()
-        const file = new File([blob], name, { type: blob.type || mimeOfName(name) })
+        const type = blob.type || mimeOfName(name)
+        if (!type.startsWith('image/')) {
+          return { error: 'chat.send 的外链附件不是图片：' + raw }
+        }
+        const file = new File([blob], name, { type })
         const pending: PendingImage = {
           id: crypto.randomUUID(),
           name,

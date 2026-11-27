@@ -28,12 +28,12 @@ export interface InjectItem {
 /** 平铺后的一项：普通 AgentPart，或宿主合成的提示词注入 */
 export type PartItem = AgentPart | InjectItem
 
-/** 是不是过程件（思考 / 工具 / 动态提示词模块 / 通道消息） */
+/** 是不是过程件（思考 / 工具 / 联网工具 / 动态提示词模块 / 通道消息） */
 export function isProcessPart(p: AgentPart): p is Extract<
   AgentPart,
-  { type: 'thinking' } | { type: 'tool' } | { type: 'prompt-module' } | { type: 'channel-message' }
+  { type: 'thinking' } | { type: 'tool' } | { type: 'web' } | { type: 'prompt-module' } | { type: 'channel-message' }
 > {
-  return p.type === 'thinking' || p.type === 'tool' || p.type === 'prompt-module' || p.type === 'channel-message'
+  return p.type === 'thinking' || p.type === 'tool' || p.type === 'web' || p.type === 'prompt-module' || p.type === 'channel-message'
 }
 
 /**

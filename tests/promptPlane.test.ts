@@ -1,8 +1,8 @@
 // @vitest-environment node
 /**
  * role / work 两层的提示词暴露面对账（用户定稿）：
- * - role 只拿「对外沟通 + 对内调度」的固定面（tmp / work / chat + compact），
- *   领域组、语法、工作流规程、排版配方全部不下发到 role；
+ * - role 只拿「对外沟通 + 对内调度 + 固定联网」的固定面（tmp / web / work / chat + compact / fetch），
+ *   其他领域组、语法、工作流规程、排版配方全部不下发到 role；
  * - work 拿本 role 的领域面 + 语法 + 工作流 + 纪律，是唯一执行层。
  * 任何能力面或提示词装配改动都跑这里。
  */
@@ -28,18 +28,18 @@ const build = (v: AgentVoice): string =>
             : buildFixerSystem()
 
 const ROLE_DOMAIN_GROUPS = [
-  'node', 'memory', 'schedule', 'workspace', 'userInfo', 'method', 'wf', 'chip', 'delivery',
-  'web', 'browser', 'mcp', 'ui', 'host', 'permission', 'files', 'process', 'skill', 'video',
+  'node', 'memory', 'schedule', 'workspace', 'userInfo', 'method', 'wf', 'chip',
+  'browser', 'mcp', 'ui', 'host', 'permission', 'files', 'process', 'skill', 'video',
   'project', 'exam', 'classroom', 'design',
 ]
 
 describe('role 层：只暴露沟通与调度面', () => {
   for (const voice of ['tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer'] as AgentVoice[]) {
-    it(voice + ': 只有固定组，没有任何领域组', () => {
+    it(voice + ': 只有固定组与固定联网面，没有其他领域组', () => {
       const text = build(voice)
       const held = AGENT_API_PLANES[voice].groups
-      expect(held).toEqual(['tmp', 'work', 'chat', 'agent'])
-      expect(AGENT_API_PLANES[voice].topLevel).toEqual(['compact'])
+      expect(held).toEqual(['tmp', 'web', 'work', 'chat', 'agent', 'delivery'])
+      expect(AGENT_API_PLANES[voice].topLevel).toEqual(['see', 'ask', 'compact', 'fetch'])
       for (const g of held) expect(text).toContain('#### api.' + g + ' —')
       for (const g of ROLE_DOMAIN_GROUPS) {
         expect(text, voice + ' 不该出现 ' + g).not.toContain('#### api.' + g + ' —')
@@ -58,15 +58,16 @@ describe('role 层：只暴露沟通与调度面', () => {
     })
   }
 
-  it('researcher / fixer 不再有交付登记与引用段（它们都在 work 面）', () => {
-    expect(buildResearcherSystem()).not.toContain('交付登记纪律：')
-    expect(buildResearcherSystem()).not.toContain('引用与交付登记纪律：')
-    expect(buildFixerSystem()).not.toContain('交付登记纪律：')
+  it('researcher / fixer 的 role 也固定持有交付登记（不再只在 work 面）', () => {
+    expect(buildResearcherSystem()).toContain('#### api.delivery —')
+    expect(buildFixerSystem()).toContain('#### api.delivery —')
+    expect(buildResearcherSystem()).toContain('api.delivery.submit')
+    expect(buildFixerSystem()).toContain('api.delivery.submit')
   })
 
-  it('role 固定面是六位挂目标 role 的交集：tmp / work / chat / agent + compact', () => {
-    expect(FIXED_API_PLANE.groups).toEqual(['tmp', 'work', 'chat', 'agent'])
-    expect(FIXED_API_PLANE.topLevel).toEqual(['compact'])
+  it('role 固定面是所有挂目标 role 的交集：tmp / web / work / chat / agent / delivery + see / ask / fetch / compact', () => {
+    expect(FIXED_API_PLANE.groups).toEqual(['tmp', 'web', 'work', 'chat', 'agent', 'delivery'])
+    expect(FIXED_API_PLANE.topLevel).toEqual(['see', 'ask', 'compact', 'fetch'])
   })
 })
 
@@ -89,6 +90,25 @@ describe('work 层：领域能力、语法与规程都在这里', () => {
       }
     })
   }
+
+  it('每个 work 都固定持有 web 与 fetch', () => {
+    for (const role of ['tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer'] as AgentProfileId[]) {
+      const text = buildWorkSystem(role)
+      expect(text, role).toContain('#### api.web —')
+      expect(text, role).toContain('api.web.search')
+      expect(text, role).toContain('fetch(url')
+    }
+  })
+
+  it('每个 work 都固定持有 see / ask / delivery（不只领域组）', () => {
+    for (const role of ['tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer'] as AgentProfileId[]) {
+      const text = buildWorkSystem(role)
+      expect(text).toContain('#### api.delivery —')
+      expect(text).toContain('see(url |')
+      expect(text).toContain('ask({ title?, questions })')
+      expect(text).toContain('借用所属 role 的身份')
+    }
+  })
 
   it('工作流规程只在 work：fixer 有修复节，设计师有课堂与实验', () => {
     expect(buildWorkSystem('fixer')).toContain('【修复函数图像】')
@@ -130,7 +150,7 @@ describe('装配顺序与缓存前缀', () => {
   it('固定组段六位 role 逐字节一致', () => {
     const fixedOf = (text: string): string => {
       const start = text.indexOf('### 沙箱 API 速查')
-      const stop = text.indexOf('\n\n你是「归一 Unyra」')
+      const stop = text.indexOf('<identity>')
       return text.slice(start, stop)
     }
     const baseline = fixedOf(buildTeacherSystem())

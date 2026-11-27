@@ -20,6 +20,7 @@ import {
 import { personaOf } from '../../../agent/persona'
 import { docFormatOf } from '../../../agent/docFormat'
 import type { AgentPart, ChannelStamp, Conversation, PendingFile, PendingImage } from '../../../agent/types'
+import { workInlineSourceOf } from '../../../lib/workInline'
 import type { AskAnswers } from '../../../agent/tools'
 import { userAbsPath } from '../../../lib/storage'
 import { focusAgentInput } from '../../../lib/agentFocus'
@@ -45,6 +46,11 @@ import {
 } from '../../../learn/roleWork/roles'
 import { inboundEnvelope, peerOf, userPeer } from '../../../learn/roleWork/channels'
 import { GroupChatPanel } from '../../agent/panel/GroupChatPanel'
+import {
+  chatReadMark,
+  unreadAgentRepliesAfter,
+  useChatReadRevision,
+} from '../../agent/panel/messageReadIndex'
 import { setGroupName } from '../../../learn/groupChat'
 import { useGroupChatBridge } from './useGroupChatBridge'
 import { groupAgentsOf, groupPreviewOf } from './groupAgentRoster'
@@ -163,6 +169,15 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
     return store.activeGoalId ?? null
   }, [tabGoalId, activeAgentTab, store])
 
+  /**
+   * 群聊正文里 `[标题](work: id)` 的解析源：一个目标下所有 role 的 work 会话
+   * 与它们的实时轮次都在这里汇合（群消息可能引用任意一位成员的 work）。
+   */
+  const groupWorkSource = useMemo(
+    () => workInlineSourceOf(store.conversations, workRunsAll, tutorGoalId),
+    [tutorGoalId, store.conversations, workRunsAll],
+  )
+
 
   const goalTitleOf = (goalId: string): string => {
     const goal = store.goals.find((g) => g.id === goalId)
@@ -278,6 +293,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
    * 各 role 的近况统计（左栏联系人卡片的运行点 / 表单点 / 预览 / 时间 / 未读数）。
    * 作用域与旧的 tutor 口径一致：固定目标页签只看该目标；全局看 store 全部（按 role 过滤）。
    */
+  const readRevision = useChatReadRevision()
   const voiceStats = useMemo(() => {
     const out: Partial<Record<AgentTeamMode, AgentVoiceStats>> = {}
     for (const voice of AGENT_ROSTER_ORDER) {
@@ -285,6 +301,10 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         ? (goalConversationsByGoal.get(tabGoalId)?.[voice] ?? EMPTY_CONVERSATIONS)
         : store.conversations.filter((c) => roleOfConversation(c) === voice)
       const latest = list[0]
+      const unread = list.reduce((n, c) => {
+        const messages = (c.channels ?? []).filter((m) => m.kind === 'user')
+        return n + unreadAgentRepliesAfter(messages, chatReadMark(`role:${c.id}:chat`))
+      }, 0)
       out[voice] = {
         running: list.some(
           (c) =>
@@ -295,11 +315,12 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         preview: lastMessagePreview(latest),
         lastTime: latest ? conversationTimeOf(latest) : 0,
         count: list.length,
+        unread,
       }
     }
     return out
     // agent.* 的三张表是状态槽（引用随运行变化），一并列进来
-  }, [tabGoalId, store.conversations, agent.runningByConversation, agent.pendingAskByConv, workRunsAll, goalConversationsByGoal])
+  }, [tabGoalId, store.conversations, agent.runningByConversation, agent.pendingAskByConv, workRunsAll, goalConversationsByGoal, readRevision])
 
   const scheduleFocus = () => {
     window.setTimeout(() => focusAgentInput(), 30)
@@ -502,7 +523,10 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         onCompact: nope,
         onSuperLab: nope,
         onExam: nope,
-        work: { sessions: [], running: false, live: [] },
+        work: {
+          ...workInlineSourceOf(conv ? [conv] : [], workRunsAll),
+          running: !!(convId && workRunsAll.some((r) => r.conversationId === convId)),
+        },
         viewWorkId: null,
         onNewConversation: () => {
           // 单会话：不新开，只回到当前这段
@@ -879,6 +903,7 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
                 onAskCancel={agent.cancelAskById}
                 onAskExpire={agent.expireAskById}
                 onAskHover={agent.setAskHover}
+                work={groupWorkSource}
                 onOpenAgentSettings={() => openAgentSettingsTab(openTab)}
                 onToast={onToast}
                 composerActive={tabActive ?? true}

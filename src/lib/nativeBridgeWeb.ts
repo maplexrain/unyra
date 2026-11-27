@@ -43,7 +43,10 @@ import type {
   CapsSttResult,
   CapsTtsRequest,
   CapsTtsResult,
+  DesignPreviewStatus,
 } from '../../shared/ipc'
+
+import { t } from '../i18n'
 
 // 本地微服务的基础地址（同一主机端口，或跨端口开发调试时指定）
 const getApiBase = (): string => {
@@ -325,6 +328,30 @@ export function createWebNativeBridge(): NativeBridge {
 
     traceGuest: {
       onState: () => () => {},
+    },
+
+    // 开发者控制台同样是 Electron 独立窗口；Web 模式没有主进程日志可读
+    devConsole: {
+      open: () => Promise.resolve({ ok: false, error: t('开发者控制台仅桌面端可用') }),
+      logs: () => Promise.resolve([]),
+      onEntry: () => () => {},
+    },
+
+    designPreview: {
+      status: () => Promise.resolve({
+        running: false,
+        port: 0,
+        url: '',
+        fileCount: 0,
+        error: t('设计预览服务仅桌面端可用'),
+      } satisfies DesignPreviewStatus),
+      ensure: () => Promise.resolve({
+        running: false,
+        port: 0,
+        url: '',
+        fileCount: 0,
+        error: t('设计预览服务仅桌面端可用'),
+      } satisfies DesignPreviewStatus),
     },
 
     notice: {

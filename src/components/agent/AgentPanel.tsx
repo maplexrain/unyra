@@ -668,6 +668,7 @@ export default function AgentPanel({
                   onAskExpire={onAskExpireById}
                   onAskHover={onAskHoverById}
                   onOpenFile={onOpenFile}
+                  work={work}
                 />
               ) : (
                 messageList

@@ -32,7 +32,6 @@ import UserTabPane from '../../user/UserTabPane'
 import TerminalTabPane from '../../terminal/TerminalTabPane'
 import UsagePanel from '../../settings/UsagePanel'
 import ClassroomView from '../classroom/ClassroomView'
-import ClassroomShowcasePage from '../classroom/ClassroomShowcasePage'
 import AgentTeamPage from '../agent-team/AgentTeamPage'
 import { SchedulePage } from '../../schedule/SchedulePage'
 import MindPanel from '../../agent/MindPanel'
@@ -42,6 +41,7 @@ import { OutlinePane } from './OutlinePane'
 import { FileTabLayer } from './FileTabLayer'
 import { EditorTabLayer } from './EditorTabLayer'
 import { SideSplitLayout } from './SideSplitLayout'
+import { FixSideWebNotice } from './FixSideWebNotice'
 import { paneInfo, examCopyOf, conceptKeysOf } from './panes'
 import { createVideoTabBridge } from './videoTabBridge'
 import { returnToAgentPage } from './agentSlotTabs'
@@ -180,9 +180,8 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     gTab.ref.kind !== 'draft' &&
     // 视频学习页（实验）不画：大纲/视图切换对播放器没有意义（用户定的）
     gTab.ref.kind !== 'video' &&
-    // 互动课堂与组件动效库不画：沉浸式独立画布与舞台页面，自成体系不画文档侧栏
+    // 互动课堂不画：沉浸式独立画布与舞台页面，自成体系不画文档侧栏
     gTab.ref.kind !== 'classroom' &&
-    gTab.ref.kind !== 'classroomShowcase' &&
     gTab.ref.kind !== 'agentTeam' &&
     // 插件文档页不画：它是参考手册，不是可编辑节点文档
     gTab.ref.kind !== 'pluginDoc' &&
@@ -212,8 +211,18 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
     tabOwners,
     activeGoalId,
   )
-  /** 这一格挂着的网页页签：WebTabLayer 常驻层只挂一份，切页签只藏不卸（见下） */
-  const gWebTabs = gVisibleTabs.filter((x): x is WebTab => x.ref.kind === 'web')
+  /** Vim :side 页签内传送目标（若当前页签未启用或目标已关闭则为 null） */
+  const gSideTarget = findSideTargetTab(docs, gTab)
+  /** 固定外侧栏的目标页签：它由外侧栏唯一挂载，主画布不再挂第二枚 guest */
+  const fixSideTargetId = store.fixSide?.targetTabId
+  const fixSideOwnsTab = Boolean(gTab && fixSideTargetId && gTab.id === fixSideTargetId)
+  /**
+   * 这一格挂着的网页页签：WebTabLayer 常驻层只挂一份，切页签只藏不卸（见下）。
+   * side / fixside 的目标页签由各自的外侧栏唯一挂载，主画布不再挂第二枚 guest。
+   */
+  const gWebTabs = gVisibleTabs
+    .filter((x): x is WebTab => x.ref.kind === 'web')
+    .filter((x) => x.id !== gSideTarget?.id && x.id !== fixSideTargetId)
   /** 这一格挂着的视频页签（含创建态）：VideoTabLayer 常驻，切页签只藏不卸（用户定的 keepalive） */
   const gVideoTabs = (g.group?.tabs ?? []).filter((x): x is VideoTab => x.ref.kind === 'video')
   /** 视频页签的五个写库回调（按格现造：onCreate 要关掉本格的草稿页签），见 workspace/videoTabBridge */
@@ -227,8 +236,6 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
   const gTerminalTabs = (g.group?.tabs ?? []).filter((t) => t.ref.kind === 'terminal')
   /** 这一格挂着的智能体团队页签（按当前目标过滤后 keepalive 常驻保活，切走只藏不卸） */
   const gAgentTeamTabs = gVisibleTabs.filter((t) => t.ref.kind === 'agentTeam')
-  /** Vim :side 页签内传送目标（若当前页签未启用或目标已关闭则为 null） */
-  const gSideTarget = findSideTargetTab(docs, gTab)
   const gFileTabs = (g.group?.tabs ?? []).filter((x) => x.ref.kind === 'local' || x.ref.kind === 'ws')
   /** 这一格挂着的教学文档 / 笔记 / 超级文档页签：编辑态常驻层（EditorTabLayer）照此挂起 */
   const gEditorTabs = (g.group?.tabs ?? []).filter(
@@ -404,6 +411,16 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                   </button>
                 )}
               </div>
+            ) : fixSideOwnsTab ? (
+              <FixSideWebNotice
+                pure={pure}
+                onExitZen={toggleZen}
+                onReveal={() => {
+                  const latest = getLatest()
+                  if (!latest.fixSide) return
+                  set({ ...latest, fixSide: { ...latest.fixSide, collapsed: false } })
+                }}
+              />
             ) : null
           ) : gTab?.ref.kind === 'blank' ? (
             /*
@@ -501,9 +518,7 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
                 set({ ...latest, classrooms: nextList })
               }}
               onOpenTab={(kind, targetId) => {
-                if (kind === 'classroomShowcase') {
-                  openTab({ kind: 'classroomShowcase', tag: targetId || undefined })
-                } else if (kind === 'doc') {
+                if (kind === 'doc') {
                   openTab({ kind: 'teach', nodeId: targetId })
                 } else if (kind === 'exam') {
                   const exam = store.exams.find((e) => e.id === targetId)
@@ -522,11 +537,6 @@ export function renderGroupBody(ctx: GroupBodyCtx) {
               }}
               onGenerateClassroom={canvasChannel?.onGenerateClassroom}
             />
-          ) : gTab?.ref.kind === 'classroomShowcase' ? (
-            /*
-              课堂组件与动效库全屏页面：组件渲染参考、交互演练与动态创作中心。
-            */
-            <ClassroomShowcasePage initialTag={gTab.ref.tag} />
           ) : gTab?.ref.kind === 'agentTeam' ? (
             /* 智能体团队页面：由下方的常驻保活层（keepalive）接管，切页签只藏不卸，这里让出位置 */
             null

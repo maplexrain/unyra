@@ -59,6 +59,53 @@ export function applyEvent(parts: AgentPart[], e: AgentEvent): void {
       }
       break
     }
+    case 'web-tool-start': {
+      const at = parts.findIndex((x) => x.type === 'web' && x.id === e.call.id)
+      const next = { type: 'web' as const, id: e.call.id, step: e.step, call: e.call }
+      if (at >= 0) parts[at] = next
+      else parts.push(next)
+      break
+    }
+    case 'web-tool-end': {
+      const at = parts.findIndex((x) => x.type === 'web' && x.id === e.call.id)
+      if (at >= 0) {
+        const p = parts[at] as Extract<AgentPart, { type: 'web' }>
+        parts[at] = { ...p, call: e.call }
+      } else {
+        parts.push({ type: 'web', id: e.call.id, step: e.step, call: e.call })
+      }
+      break
+    }
+    /**
+     * 整轮结束时的完整清单：补 signature 与每步思考原文；同时兜住流式事件漏掉的
+     * 呼叫（服务端只保证最终 chunk 有完整清单）。已在界面上的同 id 片段原位替换，
+     * 不把整轮搜索挪到回答末尾。
+     */
+    case 'web-tools-final': {
+      for (const step of e.steps) {
+        for (const call of step.calls) {
+          const at = parts.findIndex((x) => x.type === 'web' && x.id === call.id)
+          if (at >= 0) {
+            parts[at] = {
+              type: 'web',
+              id: call.id,
+              step: step.index,
+              ...(step.reasoningContent !== undefined ? { reasoning: step.reasoningContent } : {}),
+              call,
+            }
+          } else {
+            parts.push({
+              type: 'web',
+              id: call.id,
+              step: step.index,
+              ...(step.reasoningContent !== undefined ? { reasoning: step.reasoningContent } : {}),
+              call,
+            })
+          }
+        }
+      }
+      break
+    }
     case 'notice':
       parts.push({ type: 'notice', level: e.level, text: e.message })
       break
@@ -72,7 +119,7 @@ export function applyEvent(parts: AgentPart[], e: AgentEvent): void {
     case 'retry': {
       while (parts.length) {
         const last = parts[parts.length - 1]
-        if (last.type !== 'text' && last.type !== 'thinking' && last.type !== 'notice') break
+        if (last.type !== 'text' && last.type !== 'thinking' && last.type !== 'notice' && last.type !== 'web') break
         parts.pop()
       }
       break

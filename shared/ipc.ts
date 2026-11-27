@@ -190,6 +190,17 @@ export type {
   UpdateState,
 } from './ipc/update'
 
+/* ---------- 开发者控制台（主进程 + 主窗口渲染进程日志） ---------- */
+export type {
+  DevLogSource,
+  DevLogLevel,
+  DevLogEntry,
+  DevConsoleOpenResult,
+} from './ipc/devConsole'
+
+/* ---------- 设计预览内置 HTTP 服务 ---------- */
+export type { DesignPreviewStatus } from './ipc/designPreview'
+
 /* ---------- 局域网互联与文件传输服务 ---------- */
 export * from './lan'
 

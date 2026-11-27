@@ -167,6 +167,7 @@ export function AgentRosterSidebar({
             : st.preview || idleSubtitle,
         timeLabel: formatConversationTime(st.lastTime ?? 0),
         count: st.count,
+        unread: Math.max(0, st.unread ?? 0),
         avatarId: agentAvatars?.[id],
         fallbackIcon: meta.fallbackIcon,
         avatarClass: meta.avatarClass,
@@ -276,13 +277,22 @@ export function AgentRosterSidebar({
                     : 'border-transparent text-ink-soft hover:bg-line/45 hover:text-ink')
                 }
               >
-                <AgentAvatarGlyph
-                  avatarId={item.avatarId}
-                  fallback={item.fallbackIcon}
-                  size={13}
-                  imgSize={18}
-                  imgClassName="h-[18px] w-[18px] rounded-md"
-                />
+                <span className="relative inline-flex shrink-0">
+                  <AgentAvatarGlyph
+                    avatarId={item.avatarId}
+                    fallback={item.fallbackIcon}
+                    size={13}
+                    imgSize={18}
+                    imgClassName="h-[18px] w-[18px] rounded-md"
+                  />
+                  {item.unread > 0 ? (
+                    <span
+                      aria-label={t('有未读消息')}
+                      data-agent-unread={item.id}
+                      className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-rose-500 ring-1 ring-paper"
+                    />
+                  ) : null}
+                </span>
                 <span className={'font-medium ' + item.nameClass}>{item.label}</span>
                 {item.hasAsk ? (
                   <span aria-hidden="true" className="absolute right-0.5 top-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
@@ -411,6 +421,13 @@ export function AgentRosterSidebar({
                     imgSize={40}
                     imgClassName="h-10 w-10 rounded-full"
                   />
+                  {item.unread > 0 ? (
+                    <span
+                      aria-label={t('有未读消息')}
+                      data-agent-unread={item.id}
+                      className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-rose-500 ring-1 ring-paper"
+                    />
+                  ) : null}
                   {item.hasAsk ? (
                     <span
                       aria-hidden="true"
@@ -597,6 +614,13 @@ export function AgentRosterSidebar({
                       imgSize={60}
                       imgClassName="h-[60px] w-[60px] rounded-full"
                     />
+                    {item.unread > 0 ? (
+                      <span
+                        aria-label={t('有未读消息')}
+                        data-agent-unread={item.id}
+                        className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-paper"
+                      />
+                    ) : null}
                     <span
                       aria-hidden="true"
                       className={
@@ -623,6 +647,13 @@ export function AgentRosterSidebar({
                       imgSize={60}
                       imgClassName="h-[60px] w-[60px] rounded-full"
                     />
+                    {item.unread > 0 ? (
+                      <span
+                        aria-label={t('有未读消息')}
+                        data-agent-unread={item.id}
+                        className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-paper"
+                      />
+                    ) : null}
                     <span
                       aria-hidden="true"
                       className={

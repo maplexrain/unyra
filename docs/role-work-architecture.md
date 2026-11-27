@@ -1,6 +1,6 @@
 # role-work 架构
 
-> 六位团队 role 都是 **role**；role 不亲手做所有事，它把任务拆给一个或多个 **work**，
+> 每个 agent 都是一位 **role**；role 不亲手做所有事，它把任务拆给一个或多个 **work**，
 > work 在自己的独立上下文里执行，干完通过 `host.send` 交回 role，role 再决定怎么对外说。
 > 旧 subagent / agent-team 委托架构已经删除，本文是当前唯一入口。
 
@@ -18,21 +18,24 @@ role ──work.send──▶ work N（独立上下文，无人格）
 work ──host.send──▶ 回到所属 role 的 Work 通道
 ```
 
-## 六位团队 role
+## 团队 role 与名册
 
-`tutor / dispatcher / examiner / designer / researcher / fixer`。
-`free` 只保留为无目标时的 legacy 自由对话运行态，不在团队名册、龟门排行与群聊点名里。
+role 的身份由各自的提示词定义，不在任何提示词里枚举全局名册。需要协作时先
+`api.agent.list()` 取当前已注册 agent 的 id / 名称 / 简介，按简介选人；新增、替换或
+外部注册 agent 都不需要改提示词。`free` 只保留为无目标时的 legacy 自由对话运行态。
 
-## role 层：只有沟通与调度
+## role 层：沟通、调度与固定联网
 
 - **一个 agent 的 role 层始终只有一段会话**（同一目标下复用最新的 `Conversation.voice`，
   没有才落 `cv:<role>:<goal>`）；work 才是一任务一段、可多开。
-- role 的 API 是固定面：`tmp / work / chat / agent` + 顶层 `compact`（`help` 恒在）。
-  领域组（node / exam / browser / classroom / web / schedule / workspace…）一律不下发。
+- role 的 API 是固定面：`tmp / web / work / chat / agent / delivery` + 顶层 `see / ask / fetch / compact`
+  （`help` 恒在）。**web 是全员固定联网面**，每位 role 都能直接 `api.web.search` / `api.fetch`；
+  其余领域组（node / exam / browser / classroom / schedule / workspace…）一律不下发。
 - role 的系统提示词只写「我是谁、我负责什么分工、怎么派 work、怎么对外说」；
   排版配方、围栏语法、领域工作流、交付登记这些「怎么做」全部在 work 提示词里。
 - role 的 loop 不阻塞：派完 work 立即用 `chat.send(user)` 回一句回执并结束本轮；
-  **没有 `wait`**，也不轮询 `work.status`、不用 `ask` 挂住自己。
+  **没有 `wait`**，也不轮询 `work.status`。需要用户明确回答（方向 / 范围 / 难度 / 产物形态）
+  时，role 不自己在 chat 正文发问等回话，而是委派 work 用 `api.ask` 发结构化表单。
 
 ## role API 契约
 
@@ -44,22 +47,31 @@ api.work.create({ name? })
 api.work.kill(name)        // 中止并删除
 api.work.send({ name, text?, messageId? })
 api.chat.send({ channel, to?, text, messageId?, attachments? })
-api.agent.list()           // 只读：id / 名称 / 简介
+api.agent.list()           // 只读：当前已注册 agent 的 id / 名称 / 简介
+api.delivery.submit({ files, sources })
+api.web.fetch(url | { url })
+api.web.search({ query, count?, need_content? } | query, opts?)
+api.fetch(url | { url } | urls[], { maxChars? })
+api.see(url | moji:static 引用 | 本地路径 | { pdf, page })
+api.ask({ title?, questions })  // 结构化表单；阻塞到用户作答
+api.compact({ summary, tasks? })
 ```
 
 - `chat.send` 的 channel 只有 `user / agent / work`；`agent` 的 `to` 是 role id，`work` 的 `to` 是 work 名，`user` 省略 `to`。
 - 附件最多 4 个；支持 `moji:static/…`、工作区路径与 http(s) 图片。
 - `chat.send` 的 `text` 是唯一对外正文。交付物完成通知可用单独一行 `---` 分隔简短 / 详细：前面一句话口语化完成通知，后面放具体改动、索引名 / 标识符、专业术语与核验过程；聊天界面默认只显示短句，用户可切换查看详细。普通问答、寒暄、进度同步不要用该分隔。
+- 正文里单独一行 `[标题](work: work 名)` 会渲染成内嵌 work 状态块（两行、无边框）：标题 / work 名 / 状态 / 耗时 + 当前最后一步；思考、execute 标题、正文都会进入第二行，后一步覆盖前一步。每个运行中 work 一行；没有新结论也要发短回执带状态行，不能长时间静默。`work.send` 不负责消息级状态绑定。
 - 名字 1–32 字、role 内唯一，缺省 `work-N`；`/ \ : * ? " < > |` 不许出现。
-- `agent.list` 返回内置团队、自由对话与外部 agent，内置在前；只读，不能改名或增删。
+- `agent.list` 返回当前所有已注册 agent（内置、自由对话与外部），内置在前；只读，不能改名或增删。
 
 ## work 的边界
 
 - work **没有人格**；系统提示词由 `buildWorkSystem(role)` 生成，创建时固化，不随 role 改动。
   按两段拼：执行基座（work 基础纪律 + 固定 API）→ 能力规程（本 role 的职责说明、排版配方、
   动态 API、围栏语法、工作流规程与领域纪律）。
-- work 只有 `tmp / host` 固定组 + 该 role 的领域组（去掉 `work/chat/permission/ui`）；
-  顶层有 `wait / compact`，但没有 `ask`（work 不直接面对用户）。
+- work 固定持有 `tmp / delivery / host` 组 + 该 role 的领域组（去掉 `work/chat/permission/ui`）；
+  顶层固定 `wait / ask / see / compact`。`ask` 借用所属 role 的身份出现在对应通道的 ask 气泡，
+  work 自己不直接发聊天消息。
 - 一个 work 只对接创建它的 role；上下文、消息、execTrace、交付记录都在自己的账本里。
 - `work.status` 只回状态、轮次、耗时与最近 execute 标题，不回正文与参数。
 - work 结束若没显式 `host.send`，管理器把最后一段正文自动回传（标记 `auto`）。

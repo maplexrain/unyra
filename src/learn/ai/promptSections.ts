@@ -5,7 +5,7 @@
  * 1. 将系统提示词拆解为相互独立的结构化段落（索引、标题、类别徽标、颜色主题、内容），
  *    同时将「全员/执行声部共用的基础提示词」（身份总纲、团队协作、沙箱执行约束、压缩规程）
  *    明确独立出来，供 UI 展示与独立复用。
- * 2. **这里是六位团队角色与自由对话系统提示词的唯一装配来源**：运行期的 buildFreeChatSystem /
+ * 2. **这里是挂目标角色与自由对话系统提示词的唯一装配来源**：运行期的 buildFreeChatSystem /
  *    buildTeacherSystem / buildVoiceSystem 都把这里的分段按 '\n\n' 拼回去，设置页的预览
  *    直接展示同一份分段——预览与真正发出的提示词不会再各说各话。
  * 3. role 的顺序（用户定稿）：执行基座（共同前缀 + 固定组 API）→ 角色分工（身份、
@@ -19,7 +19,6 @@ import { ALL_AGENTS_COMMON_PREFIX, SHARED_AGENT_PREFIX } from './agentSharedPref
 import { apiPromptPartsFor, workDelegationSectionFor } from './apiPromptSections'
 import { FREE_CHAT_API_SECTION, FREE_CHAT_BOUNDARY, FREE_CHAT_IDENTITY } from './freeChatCopy'
 import { ROLE_COMPACTION_GUIDE, ROLE_CHANNEL_GUIDE, ROLE_WORK_GUIDE } from './roleWorkGuide'
-import { TURTLE_CLAN_GUIDE } from './turtleClan'
 import { voiceCopyOf } from './voiceCopy'
 import { promptBlock } from './promptFrames'
 import type { AgentProfileId } from '../../agent/agentProfile'
@@ -52,9 +51,6 @@ export interface PromptSection {
 /* =========================================================================
  * 共同提示词组件（独立导出）
  * ========================================================================= */
-
-/** 共同提示词：龟门六兄弟身份总纲（团队角色共用，拼在各自的 role 角色定位段前面） */
-export const COMMON_TURTLE_CLAN_PROMPT = TURTLE_CLAN_GUIDE
 
 /** 共同提示词：role 层协作总纲与三通道纪律（所有 role 拥有） */
 export const COMMON_TEAM_COLLABORATION_PROMPT = ROLE_WORK_GUIDE + '\n\n' + ROLE_CHANNEL_GUIDE
@@ -136,7 +132,7 @@ function roleSections(voice: AgentVoice): PromptSection[] {
       badge: '角色',
       color: 'rose',
       content: [
-        promptBlock('identity', [TURTLE_CLAN_GUIDE, '', ...copy.role].join('\n')),
+        promptBlock('identity', copy.role.join('\n')),
         promptBlock('duties', copy.duty.join('\n')),
         promptBlock('delegated_capabilities', workDelegationSectionFor(voice)),
       ]

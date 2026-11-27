@@ -267,10 +267,10 @@ export function AgentSettingsView({
       ? profile.model.trim()
       : t('该提供商默认（第一个）')
 
-  /* ---------- execute api（role 只有固定编排面；领域能力在 work 设置节展示） ---------- */
+  /* ---------- execute api（role 固定编排面 + 固定联网面；其他领域能力在 work 设置节展示） ---------- */
   /**
-   * role 层能力面由架构固定：help / compact + tmp / work / chat / agent。
-   * 领域组（node / exam / classroom / web …）全部下沉到 work，在下方「工作层（work）」只读展示。
+   * role 层能力面由架构固定：help / compact / fetch + tmp / web / work / chat / agent。
+   * web 是全员固定联网面；其余领域组（node / exam / classroom / browser …）下沉到 work，在下方「工作层（work）」只读展示。
    */
   const coreCatalog = SANDBOX_API_CATALOG.find((g) => g.key === 'core')
   const fixedRows: ApiRow[] = []
@@ -472,10 +472,10 @@ export function AgentSettingsView({
               title={t('execute 开放的 api')}
               hint={
                 isFree
-                  ? t('自由对话只有 work / chat / agent / tmp / compact 固定面；联网、日程等领域能力全部在 work 层。')
+                  ? t('自由对话的固定面：work / chat / agent / tmp / web / delivery + see / ask / fetch / compact；日程等其余领域能力在 work 层。')
                   : isTutor
-                    ? t('导师的 role 面按架构固定、只读（不可增删）：只保留对学习者说话与编排 work 的固定基座；领域执行面全部在下方「工作层（work）」。')
-                    : t('这位 role 的 api 面由架构分工固定、只读（不可增删）：role 只保留 work / chat / tmp / compact，领域执行能力在 work 层。')
+                    ? t('导师的 role 面按架构固定、只读（不可增删）：保留对学习者说话、编排 work 与固定联网面；领域执行面全部在下方「工作层（work）」。')
+                    : t('这位 role 的 api 面由架构分工固定、只读（不可增删）：role 保留 work / chat / tmp / web / delivery 与固定联网面，其他领域执行能力在 work 层。')
               }
             />
             <div className="flex flex-col gap-3">
@@ -483,7 +483,7 @@ export function AgentSettingsView({
                 <div className="mb-1.5 flex items-center gap-2 text-[11px]">
                   <span className="font-semibold text-ink-strong">{t('固定组')}</span>
                   <span className="min-w-0 truncate text-ink-faint">
-                    {isFree ? t('自由对话的固定执行基座') : t('六位 role 共用 · 架构固定')}
+                    {isFree ? t('自由对话的固定执行基座') : t('全部 role 共用 · 架构固定')}
                   </span>
                   <span className="ml-auto shrink-0 tabular-nums text-ink-faint">
                     {t('{0} 项', fixedRows.length)}
@@ -495,7 +495,7 @@ export function AgentSettingsView({
                 <div className="mb-1.5 flex items-center gap-2 text-[11px]">
                   <span className="font-semibold text-ink-strong">{t('非固定组')}</span>
                   <span className="min-w-0 truncate text-ink-faint">
-                    {isFree ? t('role 层不直接持有领域能力') : t('role 层不直接持有领域能力')}
+                    {isFree ? t('role 层不直接持有其他领域能力') : t('role 层不直接持有其他领域能力')}
                   </span>
                   {variableRows.length > 0 && (
                     <span className="ml-auto shrink-0 tabular-nums text-ink-faint">
@@ -508,8 +508,8 @@ export function AgentSettingsView({
                 ) : (
                   <p className="rounded-lg border border-line/70 bg-paper-deep/40 px-3 py-2 text-[11.5px] leading-relaxed text-ink-faint">
                     {isFree
-                      ? t('无：role 层只保留固定编排面，领域能力全部在 work 层。')
-                      : t('无：这位 role 只持有全员共用的固定基座。')}
+                      ? t('无：role 层只保留固定编排面与联网面，其余领域能力在 work 层。')
+                      : t('无：这位 role 只持有全员共用的固定基座（含固定联网面）。')}
                   </p>
                 )}
               </div>

@@ -34,6 +34,7 @@ import { MessageMediaGrid } from './MessageMedia'
 import { isVideoFile } from './messageMediaLayout'
 import { DeliveryBlock } from './DeliveryBlock'
 import { ToolCard } from './ToolCard'
+import { WebToolBlock } from './WebToolBlock'
 import { lastLineOf } from './preview'
 import { useFold } from './useFold'
 import { isInterruptedNotice } from '../../../learn/agent/inflight'
@@ -314,6 +315,7 @@ function SinglePart({
   if (part.type === 'notice') return <NoticeBlock level={part.level} text={part.text} onResume={onResumeNotice} />
   if (part.type === 'thinking') return <ThinkingBlock text={part.text} />
   if (part.type === 'tool') return <ToolCard part={part} />
+  if (part.type === 'web') return <WebToolBlock call={part.call} />
   if (part.type === 'prompt-module') return <PromptModuleBlock part={part} />
   if (part.type === 'channel-message') return <ChannelMessageBlock part={part} />
   return null

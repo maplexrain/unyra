@@ -9,7 +9,7 @@
  */
 
 import type { Dispatch, SetStateAction } from 'react'
-import { createExecuteTools, type AskFormPayload, type ExamToolDeps } from '../../agent/tools'
+import { createExecuteTools, type AskAnswers, type AskFormPayload, type ExamToolDeps } from '../../agent/tools'
 import { ASK_BUBBLE_TTL_MS } from '../../agent/sandbox/limits'
 import { type AiSettings, globalContextWindow } from '../../ai/settings'
 import { agentRuntimeApiAllow, agentWfGrant, profileOf, resolveAgentGlobal, type AgentVoice } from '../../agent/agentProfile'
@@ -504,6 +504,12 @@ export function rigTurnTools(io: {
         }
         return 'cancelled'
       }
+      /** 提交成功时把答案快照留在气泡上；表单随后以只读形态继续显示。 */
+      const answersOf = (value: unknown): AskAnswers | undefined => {
+        if (!value || typeof value !== 'object') return undefined
+        const rec = value as { answers?: unknown }
+        return Array.isArray(rec.answers) ? (rec.answers as AskAnswers) : undefined
+      }
       const settle = (status: ChannelAskStatus, value: unknown): void => {
         if (askWaitersRef.current.get(askId) !== waiter) return
         askWaitersRef.current.delete(askId)
@@ -522,10 +528,12 @@ export function rigTurnTools(io: {
         const state = getLatest()
         const cur = state.conversations.find((c) => c.id === target.conversationId)
         const currentAsk = cur?.channels?.find((m) => m.id === askMessage.id)?.ask ?? askMessage.ask!
+        const answers = status === 'answered' ? answersOf(value) : undefined
         const settled = {
           ...currentAsk,
           status,
           settledAt: Date.now(),
+          ...(answers ? { answers } : {}),
         }
         if (cur) {
           const conversations = state.conversations.map((c) =>

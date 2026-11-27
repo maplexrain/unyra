@@ -2,7 +2,7 @@
  * 系统提示词里的 **execute api 速查的固定组 / 非固定组** 渲染（从 apiRegistry 投影，不手抄名单）。
  *
  * 为什么要拆两段：
- * 1. **固定组**是六位挂目标 role 逐位都有的执行基座（help / compact + tmp / work / chat / agent），
+ * 1. **固定组**是所有挂目标 role 逐位都有的执行基座（help + see / ask / fetch / compact + tmp / web / work / chat / agent / delivery），
  *    内容与 role 无关，逐字节一致——放在共同基础前缀之后，跨 role 的缓存前缀能从 P0 一路
  *    命中到固定组末尾；设置页也把它单列为「固定组」。
  * 2. **非固定组**是各 role 按架构分工拿到的域（node / exam / classroom / browser …），
@@ -25,7 +25,7 @@ export interface ApiPlaneSplit {
 }
 
 export interface SplitApiDoc {
-  /** 固定组：六位 role 共用，逐字节一致 */
+  /** 固定组：所有 role 共用，逐字节一致 */
   fixed: string
   /** 非固定组：本 role 专属；没有专属面时是空串 */
   variable: string
@@ -103,7 +103,8 @@ function renderGroupBlock(group: ApiGroupDoc, members?: ReadonlySet<string>, con
   if (!concise && group.usage.trim()) lines.push(group.usage.trim())
   for (const api of apis) {
     const summary = concise ? promptSummary(api.summary) : api.summary
-    lines.push('- `' + api.signature + '` — ' + summary + (!concise && api.trap ? '。' + api.trap : ''))
+    const signature = group.key === 'core' ? api.signature : `api.${api.signature}`
+    lines.push('- `' + signature + '` — ' + summary + (!concise && api.trap ? '。' + api.trap : ''))
   }
   return lines.join('\n')
 }

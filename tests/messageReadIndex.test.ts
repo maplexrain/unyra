@@ -7,6 +7,7 @@ import {
   markChatRead,
   resetChatReadIndexCache,
   unreadAfter,
+  unreadAgentRepliesAfter,
   useChatReadIndex,
 } from '../src/components/agent/panel/messageReadIndex'
 
@@ -32,6 +33,20 @@ describe('消息浏览记录（按通道）', () => {
     expect(unreadAfter(list, chatReadMark('group:g1'))).toBe(2)
     // 同一条再记一次不重复写
     expect(markChatRead('group:g1', list[0], 3)).toBe(false)
+  })
+
+  it('名册未读只数 agent 回复；没有浏览记录时整段私聊算未读', () => {
+    const list = [
+      { id: 'u1', ts: 10, direction: 'in' as const },
+      { id: 'a1', ts: 20, direction: 'out' as const },
+      { id: 'u2', ts: 30, direction: 'in' as const },
+      { id: 'a2', ts: 40, direction: 'out' as const },
+    ]
+    expect(unreadAgentRepliesAfter(list, null)).toBe(2)
+    expect(unreadAgentRepliesAfter(list, { id: 'u1', ts: 10, total: 4 })).toBe(2)
+    expect(unreadAgentRepliesAfter(list, { id: 'a1', ts: 20, total: 4 })).toBe(1)
+    expect(unreadAgentRepliesAfter(list, { id: 'u2', ts: 30, total: 4 })).toBe(1)
+    expect(unreadAgentRepliesAfter(list, { id: 'a2', ts: 40, total: 4 })).toBe(0)
   })
 
   it('通道彼此隔离：读了一级群聊不影响评论串', () => {

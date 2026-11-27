@@ -6,10 +6,10 @@
  * - AgentEvent：运行时向前端推送的增量事件（思考 / 工具 / 正文）
  * - AgentTool：可注册的工具；新增能力只需实现一个工具并注册进 ToolRegistry
  */
-import type { ChatUsage } from '../ai/types'
+import type { ChatUsage, ServerToolCall, ServerToolStep } from '../ai/types'
 import type { AgentProfileId, AgentVoice } from './agentProfile'
 import type { DeliveryRecord } from './delivery'
-import type { AskFormPayload } from './sandbox/types/ask'
+import type { AskAnswers, AskFormPayload } from './sandbox/types/ask'
 
 /** 会话里一条消息的组成片段：思考过程、正文回复、一次工具调用、一条运行时提示 */
 export type AgentPart =
@@ -48,6 +48,20 @@ export type AgentPart =
       /** 通道消息 id */
       channelId: string
       text: string
+    }
+  | {
+      /**
+       * DeepSeek 服务端联网工具的一次调用（`deepseek_web_search` / `deepseek_read_url`）。
+       * 只在 work 层开启；界面在思维列表里展开成「搜了什么、看了哪些来源」。
+       */
+      type: 'web'
+      /** 服务端 call id */
+      id: string
+      /** 第几步；同一轮可能有多步 */
+      step: number
+      /** 本步的思考原文，回传历史时按步恢复 */
+      reasoning?: string
+      call: ServerToolCall
     }
   | {
       type: 'tool'
@@ -132,6 +146,8 @@ export interface ChannelAsk {
   status: ChannelAskStatus
   /** 用户提交 / 取消 / 超时的时间 */
   settledAt?: number
+  /** 提交成功时的答案快照：表单不消失，只读回看就靠它 */
+  answers?: AskAnswers
 }
 
 /** 一条通道流水：role 的外部收发都在这里，聊天层只读它，不碰工具/思考。 */
@@ -141,12 +157,6 @@ export interface ChannelMessage {
   direction: 'in' | 'out'
   from: ChannelPeer
   to: ChannelPeer
-  /**
-   * 这条消息绑定的 work 运行状态（work.send({ bindMessageId }) 写入）。
-   * 绑定是消息级、可选的：不带就不显示。宿主在 work 启动/收口/停止/出错时
-   * 原地 patch 这份快照，界面据此在气泡下方挂一枚实时状态组件。
-   */
-  work?: WorkBinding
   /**
    * 消息正文。单独一行 `---` 可分隔简短 / 详细：分隔线前是口语化短汇报，
    * 后面是详细改动、索引名、标识符与专业说明；聊天层默认只显示短汇报。
@@ -536,30 +546,6 @@ export interface Conversation {
  */
 export type WorkStatus = 'idle' | 'running' | 'interrupted' | 'stopped' | 'error'
 
-/**
- * 挂在通道消息上的 work 运行快照。
- *
- * 只做展示，不反过来驱动 work：真正的状态源仍是 WorkSession。宿主在启动、执行
- * 工具、收口、停止、删除这些节点上 patch 这份快照，让用户可以在发起任务的那条
- * 消息下面就看见进度，而不必再翻到 work 列表。
- */
-export interface WorkBinding {
-  workId: string
-  workName: string
-  roleId?: AgentProfileId
-  status: WorkStatus
-  /** 已完成轮次（收口时更新） */
-  runs: number
-  /** 已完成轮次累计时长；running 时界面再叠加当前这段 */
-  runtimeMs: number
-  /** 当前这段运行的开始时刻（running 时有） */
-  startedAt?: number
-  lastActiveAt?: number
-  /** 最近一次 execute 的标题（实时活动） */
-  current?: string
-  lastIssue?: string
-}
-
 /** work.status 的过程轨迹：只记 execute 的标题（description），不存 body / args */
 export interface WorkExecuteTrace {
   at: number
@@ -619,6 +605,14 @@ export type AgentEvent =
    * 这两种在 parts 里长得一模一样，只有 runtime 自己知道边界在哪。
    */
   | { type: 'hop' }
+  /**
+   * DeepSeek 服务端联网工具的实时进展：call_started 先落一条 running 的 web 片段，
+   * call_completed 再补来源；web-tools-final 是整轮结束后的完整清单（补 signature，
+   * 也兜住开始/结束事件丢失的情况）。
+   */
+  | { type: 'web-tool-start'; step: number; call: ServerToolCall }
+  | { type: 'web-tool-end'; step: number; call: ServerToolCall }
+  | { type: 'web-tools-final'; steps: ServerToolStep[] }
   /** 非错误的运行时提示：输出被截断、步数用尽、正在重试等 */
   | { type: 'notice'; level: 'warn' | 'info'; message: string }
   /**

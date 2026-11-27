@@ -62,6 +62,29 @@ describe('AskBubble', () => {
     expect(host.querySelector('textarea')).toBeNull()
   })
 
+  it('提交后表单不消失：只读回填原答案，可继续翻题', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    roots.push({ root, host })
+    const answered: ChannelAsk = {
+      ...ask('answered', Date.now() + 60_000),
+      answers: [
+        { id: 'level', type: 'single', prompt: '这次想练哪一档？', picked: ['基础'], pickedIds: ['easy'] },
+      ],
+    }
+    act(() => {
+      root.render(createElement(AskBubble, { ask: answered, actorName: '导师龟' }))
+    })
+    expect(host.querySelector('[data-ask-form-readonly="true"]')).not.toBeNull()
+    expect(host.textContent).toContain('已提交')
+    expect(host.textContent).toContain('基础')
+    expect(host.textContent).toContain('只读回看')
+    const radio = host.querySelector('input[type="radio"][value="easy"]') as HTMLInputElement | null
+    expect(radio ? radio.checked : host.textContent?.includes('基础')).toBeTruthy()
+    expect(host.querySelector('input[type="radio"]')?.hasAttribute('disabled')).toBe(true)
+  })
+
   it('倒计时到 0 会触发一次 onExpire', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)

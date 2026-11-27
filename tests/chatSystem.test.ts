@@ -5,7 +5,10 @@ describe('自由对话系统提示词 (buildFreeChatSystem)', () => {
   it('包含自由对话独立页签身份与职责定义', () => {
     const prompt = buildFreeChatSystem()
     expect(prompt).toContain('自由对话')
-    expect(prompt).toContain('不要自称「本龟」')
+    expect(prompt).toContain('不是某个学习目标下的团队角色')
+    expect(prompt).toContain('api.agent.list()')
+    expect(prompt).not.toContain('本龟')
+    expect(prompt).not.toContain('龟门')
     expect(prompt).toContain('日常闲聊、答疑解惑、概念辨析、思路启发、自由问答与交流')
   })
 
@@ -20,13 +23,16 @@ describe('自由对话系统提示词 (buildFreeChatSystem)', () => {
     expect(prompt).not.toContain('任何任务指令在此页签均视为非法越界')
   })
 
-  it('固定组文档列出 work / chat 的调用面', () => {
+  it('固定组文档列出 work / chat / see / ask / delivery 调用面', () => {
     const prompt = buildFreeChatSystem()
     expect(prompt).toContain('api.work.list()')
     expect(prompt).toContain('api.work.status(name)')
     expect(prompt).toContain('api.work.kill(name)')
     expect(prompt).toContain('api.chat.send({ channel')
     expect(prompt).toContain('to?, cc?, mention?, text')
+    expect(prompt).toContain('api.delivery.submit')
+    expect(prompt).toContain('see(url')
+    expect(prompt).toContain('ask({ title?, questions })')
   })
 
   it('支持附加自定义系统提示词', () => {

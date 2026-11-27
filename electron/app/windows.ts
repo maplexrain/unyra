@@ -13,6 +13,7 @@ import { attachWindowStatePersistence, loadWindowState } from './windowState'
 import { appIcon } from './icon'
 import { attachCloseGuard } from './tray'
 import { setMainWindow } from './mainWindow'
+import { attachRendererLogForwarding } from './devLogs'
 
 /* ---------- 窗口 ---------- */
 
@@ -122,6 +123,8 @@ export async function createWindow(): Promise<void> {
   })
 
   attachConsoleForwarding(win)
+  // 主窗口渲染进程的 console 另存一份给开发者控制台；只挂主窗口，卫星窗口不进这个缓冲
+  attachRendererLogForwarding(win)
 
   // 回环音频的 display-media 通道必须在页面加载前就位（渲染层一开波浪就会要）
   attachLoopbackAudio()
@@ -179,30 +182,21 @@ function captureRendererStartup(win: BrowserWindow): void {
  * 转一份到终端，启动瞬间就能看到。卫星窗口（学习状态 / 试卷 / 设置）同样挂着它——
  * 那几个窗口平时不开 DevTools，出问题只能靠这一条。
  *
- * 注意签名：这一版 Electron 的**类型声明**是 (event, details)，但**运行时**仍按老签名
- * 发位置参数（event, level, message, line, sourceId）。按类型写就拿不到那几个值，
- * 所以这里显式按运行时形状收参数。
+ * 签名用 Electron 新版 console-message 事件：单个 details 对象，字段是
+ * message / level / lineNumber / sourceId。旧的 (level, message, line, sourceId)
+ * 位置参数已弃用，继续用会在终端里打一条 deprecation warning。
  */
 export function attachConsoleForwarding(win: BrowserWindow): void {
-  type ConsoleListener = (
-    event: unknown,
-    level?: number,
-    message?: string,
-    line?: number,
-    sourceId?: string,
-  ) => void
-  const onConsole: ConsoleListener = (_event, level, message, line, sourceId) => {
-    const text = message ?? ''
+  win.webContents.on('console-message', (details) => {
+    const text = details.message
     if (!text) return
-    const where = sourceId ? ' (' + String(sourceId).split('/').pop() + ':' + (line ?? 0) + ')' : ''
-    if (level === 3) console.error('[renderer] ' + text + where)
-    else if (level === 2) console.warn('[renderer] ' + text + where)
+    const where = details.sourceId
+      ? ' (' + String(details.sourceId).split('/').pop() + ':' + (details.lineNumber ?? 0) + ')'
+      : ''
+    if (details.level === 'error') console.error('[renderer] ' + text + where)
+    else if (details.level === 'warning') console.warn('[renderer] ' + text + where)
     else console.log('[renderer] ' + text + where)
-  }
-  ;(win.webContents as unknown as { on(e: 'console-message', l: ConsoleListener): void }).on(
-    'console-message',
-    onConsole,
-  )
+  })
 }
 
 /* ---------- 外链拦截 ---------- */

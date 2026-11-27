@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   API_GROUPS,
+  apiDisplaySignature,
   apiDocOf,
   buildSandboxHelp,
   catalogGroups,
@@ -25,6 +26,17 @@ describe('注册表形状', () => {
     expect(new Set(keys).size).toBe(keys.length)
     const fulls = API_GROUPS.flatMap((g) => g.apis.map((a) => a.full))
     expect(new Set(fulls).size).toBe(fulls.length)
+  })
+
+  it('签名不含 api. 前缀（展示层统一拼一次，避免 api.api.agent）', () => {
+    for (const group of API_GROUPS) {
+      for (const api of group.apis) {
+        expect(api.signature.startsWith('api.'), `${api.full} 的签名重复带 api.`).toBe(false)
+      }
+    }
+    const agent = API_GROUPS.find((group) => group.key === 'agent')!.apis[0]!
+    expect(apiDisplaySignature(agent)).toBe('api.agent.list()')
+    expect(apiDisplaySignature(agent)).not.toContain('api.api.')
   })
 
   it('每条 api 都有签名、作用、用法与示例；示例必须是可执行表达式（带 await api. 前缀或裸调用）', () => {

@@ -11,7 +11,8 @@
  * - 纸墨与木质触感：正弦/三角波与整形滤波噪声为主，温润短促，杜绝刺耳方波与街机感；
  * - 确定性静音：快进（seek）与预览未播放状态永远保持静音；暂停/跳过即刻柔和收尾。
  */
-import { SFX_RECIPES } from './sfxLibrary'
+import { SFX_RECIPES, createSfxKit } from './sfxLibrary'
+import { getExternalClassroomSound } from '../registry'
 
 export interface SfxSettings {
   enabled: boolean
@@ -26,7 +27,7 @@ export interface PlaySfxOptions {
   duration?: number
   /** 播放倍速（仅作用于时长型音效） */
   rate?: number
-  /** 忽略全局开关（展示页试听用） */
+  /** 忽略全局开关（音效试听） */
   force?: boolean
 }
 
@@ -170,8 +171,10 @@ export function stopAllSfx(): void {
  */
 export function startSfx(name: string | undefined | null, opts: PlaySfxOptions = {}): SfxHandle | null {
   if (!name || name === 'none') return null
-  const recipe = SFX_RECIPES[name]
-  if (!recipe) return null
+  const builtin = SFX_RECIPES[name]
+  const external = builtin ? undefined : getExternalClassroomSound(name)
+  if (!builtin && !external) return null
+  const defaultDuration = builtin?.defaultDuration ?? external?.defaultDuration
   const s = getSfxSettings()
   if (!s.enabled && !opts.force) return null
 
@@ -194,7 +197,7 @@ export function startSfx(name: string | undefined | null, opts: PlaySfxOptions =
   let stopped = false
 
   const rate = Math.max(0.5, Math.min(3, opts.rate ?? 1))
-  const rawDurMs = opts.duration ?? recipe.defaultDuration ?? 600
+  const rawDurMs = opts.duration ?? defaultDuration ?? 600
   const durSec = Math.max(0.14, Math.min(3.5, rawDurMs / 1000 / rate))
 
   const handle: SfxHandle = {
@@ -218,15 +221,17 @@ export function startSfx(name: string | undefined | null, opts: PlaySfxOptions =
   }
 
   try {
-    recipe.play({
+    const voice = {
       ctx: c,
       dry: voiceDry,
       wet: voiceWet,
       t: c.currentTime + 0.005,
       vol: Math.min(1.5, Math.max(0, opts.volume ?? 1)),
       dur: durSec,
-      onStop: (fn) => stopCallbacks.push(fn),
-    })
+      onStop: (fn: () => void) => stopCallbacks.push(fn),
+    }
+    if (builtin) builtin.play(voice)
+    else if (external) external.play(voice, createSfxKit(voice))
     activeHandles.add(handle)
     if (typeof window !== 'undefined') {
       const ttl = Math.max(2200, durSec * 1000 + 1800)

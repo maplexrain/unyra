@@ -14,6 +14,8 @@ export interface AgentVoiceStats {
   preview?: string
   lastTime?: number
   count?: number
+  /** 该 role 私聊里还没读的 agent 消息数（0 不画红点） */
+  unread?: number
 }
 
 /** 各 role 近况的缺省（没有统计时用） */

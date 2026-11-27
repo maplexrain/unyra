@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react'
-import { Bell, Bug, Check, RefreshCw, ShieldCheck, Sparkles, Terminal, X } from 'lucide-react'
+import { Bell, Bug, Check, Monitor, RefreshCw, ShieldCheck, Sparkles, Terminal, X } from 'lucide-react'
 import { isDevUnlocked } from '../../lib/devMode'
 import { native } from '../../lib/native'
 import { clearMockUpdate, isMockUpdateActive, mockUpdatePush, useUpdateState } from '../../lib/update'
@@ -15,8 +15,22 @@ import { inputBase } from './fields'
 export function DevPanel({ onUnlocked }: { onUnlocked: () => void }) {
   const [unlocked, setUnlocked] = useState(isDevUnlocked)
   const [notifyResult, setNotifyResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [consoleError, setConsoleError] = useState<string | null>(null)
   useUpdateState()
   const isMock = isMockUpdateActive()
+
+  const openDevConsole = () => {
+    setConsoleError(null)
+    try {
+      void native()
+        .devConsole.open()
+        .then((r) => {
+          if (!r.ok) setConsoleError(r.error ?? t('控制台打开失败'))
+        })
+    } catch (err) {
+      setConsoleError(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   const sendTestNotify = () => {
     try {
@@ -83,7 +97,7 @@ export function DevPanel({ onUnlocked }: { onUnlocked: () => void }) {
             <h2 className="text-[14px] font-semibold text-ink-strong">{t('开发者与诊断')}</h2>
           </div>
           <p className="mt-1 text-[11.5px] text-ink-soft">
-            {t('唤起 Chromium 开发者工具，诊断系统原生桥接与通知链路。')}
+            {t('唤起 Chromium 开发者工具、打开开发者控制台，诊断系统原生桥接、IPC 与通知链路。')}
           </p>
         </div>
 
@@ -92,6 +106,38 @@ export function DevPanel({ onUnlocked }: { onUnlocked: () => void }) {
           <span>{t('开发者模式已激活')}</span>
         </div>
       </div>
+
+      {/* 开发者控制台卡片 */}
+      <section className="rounded-xl border border-line bg-card/60 p-3.5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2.5">
+            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-seal">
+              <Monitor size={15} />
+            </div>
+            <div>
+              <div className="text-[13px] font-medium text-ink-strong">{t('开发者控制台')}</div>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
+                {t('独立窗口实时显示主进程与主窗口渲染进程的日志，用于排查启动、IPC 与界面问题。')}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={openDevConsole}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line bg-card px-3 py-1.5 text-[12px] font-medium text-ink transition hover:border-line-strong hover:bg-card/80"
+          >
+            <Monitor size={13} className="text-seal" />
+            <span>{t('打开控制台')}</span>
+          </button>
+        </div>
+
+        {consoleError && (
+          <div className="mt-3 rounded-lg border border-warn/30 bg-warn/5 p-2.5 text-[11px] leading-relaxed text-warn-deep">
+            {consoleError}
+          </div>
+        )}
+      </section>
 
       {/* 开发者工具卡片 */}
       <section className="rounded-xl border border-line bg-card/60 p-3.5">

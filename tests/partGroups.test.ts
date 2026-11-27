@@ -22,12 +22,25 @@ const tool = (id: string): AgentPart => ({
   status: 'done',
 })
 const mod = (key: string): AgentPart => ({ type: 'prompt-module', key, text: '规范全文' })
+const web = (id: string): AgentPart => ({
+  type: 'web',
+  id,
+  step: 0,
+  call: {
+    id,
+    type: 'deepseek_web_search',
+    kind: 'search',
+    action: { type: 'search', queries: ['q'] },
+    status: 'completed',
+  },
+})
 const text = (t: string): AgentPart => ({ type: 'text', text: t })
 
 describe('过程件的范围', () => {
-  it('思考 / 工具 / 提示词模块都是过程件；正文与提示不是', () => {
+  it('思考 / 工具 / 联网工具 / 提示词模块都是过程件；正文与提示不是', () => {
     expect(isProcessPart(think('a'))).toBe(true)
     expect(isProcessPart(tool('t1'))).toBe(true)
+    expect(isProcessPart(web('w1'))).toBe(true)
     expect(isProcessPart(mod('ui'))).toBe(true)
     expect(isProcessPart(text('正文'))).toBe(false)
     expect(isProcessPart({ type: 'notice', level: 'warn', text: '截断' })).toBe(false)

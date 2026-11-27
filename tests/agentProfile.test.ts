@@ -10,6 +10,7 @@ import {
   type AgentVoice,
   agentAvatarIdOf,
   agentRuntimeApiAllow,
+  workRuntimeApiAllow,
   CONTENT_VOICES,
   DEFAULT_AGENT_NAME,
   agentWfGrant,
@@ -220,24 +221,33 @@ describe('agentWfGrant（工作流授权面：内置规程面按分工固定 + �
     expect(agentWfGrant(settings({ examiner: { workflows: ['exam'] } }), 'examiner').registered?.size).toBe(0)
   })
 
-  it('运行时 apiAllow：role 只有固定面，领域能力全在 work', () => {
+  it('运行时 apiAllow：role 固定面 + 固定联网面，领域能力仍在 work', () => {
     for (const voice of AGENT_VOICES) {
       const allow = agentRuntimeApiAllow(voice)
-      expect(allow).toEqual(['tmp', 'work', 'chat', 'agent', 'compact'])
+      expect(allow).toEqual(['tmp', 'web', 'work', 'chat', 'agent', 'delivery', 'see', 'ask', 'compact', 'fetch'])
       expect(allow).not.toContain('core')
       expect(allow).not.toContain('node')
       expect(allow).not.toContain('exam')
       expect(allow).not.toContain('browser')
       expect(allow).not.toContain('classroom')
-      expect(allow).not.toContain('fetch')
-      expect(allow).not.toContain('see')
+      expect(allow).toContain('fetch')
+      expect(allow).toContain('web')
+      expect(allow).toContain('see')
       expect(allow).not.toContain('wait')
-      expect(allow).not.toContain('ask')
+      expect(allow).toContain('ask')
     }
     // work 面仍按 role 派生领域组（examiner 的 work 持有 exam）
     const examinerWork = buildWorkSystem('examiner')
     expect(examinerWork).toContain('#### api.exam —')
     expect(examinerWork).toContain('#### api.node —')
+  })
+
+  it('每个 work 都固定持有 web / fetch', () => {
+    for (const voice of AGENT_VOICES) {
+      const allow = workRuntimeApiAllow(voice)
+      expect(allow, voice).toContain('web')
+      expect(allow, voice).toContain('fetch')
+    }
   })
 
   it('voiceForWorkflow：工作流统一经经理龟路由（AGENT_WORKFLOW_PLANES 只是规程面）', () => {
@@ -260,7 +270,7 @@ describe('agentWfGrant（工作流授权面：内置规程面按分工固定 + �
 })
 
 describe('profiles 声部 id 契约', () => {
-  it('认六位团队 role；free 只保留为无目标自由对话的运行形态', () => {
+  it('内置 role id 与默认头像齐全；free 只保留为无目标自由对话的运行形态', () => {
     const ids: AgentProfileId[] = ['tutor', 'dispatcher', 'examiner', 'designer', 'researcher', 'fixer']
     for (const id of ids) {
       expect(DEFAULT_AGENT_AVATAR[id]).toBeTruthy()
@@ -275,26 +285,24 @@ describe('profiles 声部 id 契约', () => {
     for (const id of ['dispatcher', 'researcher', 'fixer'] as AgentVoice[]) {
       expect(CONTENT_VOICES.has(id)).toBe(false)
     }
-    // 经理龟与所有 role 一样：只有沟通 + 调度固定面，活交给 work
+    // 所有 role 一样：沟通 + 调度固定面，外加 see / ask / delivery / 固定联网
     const dispatcher = agentRuntimeApiAllow('dispatcher')
-    expect(dispatcher).toEqual(['tmp', 'work', 'chat', 'agent', 'compact'])
+    expect(dispatcher).toEqual(['tmp', 'web', 'work', 'chat', 'agent', 'delivery', 'see', 'ask', 'compact', 'fetch'])
     expect(dispatcher).not.toContain('node')
-    expect(dispatcher).not.toContain('web')
-    expect(dispatcher).not.toContain('delivery')
-    expect(dispatcher).not.toContain('ask')
+    expect(dispatcher).toContain('web')
+    expect(dispatcher).toContain('delivery')
+    expect(dispatcher).toContain('ask')
   })
 })
 
 /* ---------- 系统提示词：按声部分工拼装 ---------- */
 
 describe('系统提示词：role 只说话与调度，work 才带领域规程', () => {
-  it('导师 role 提示词：人格与分诊在场，领域规程不在', () => {
+  it('导师 role 提示词：身份与分诊在场，领域规程与名册枚举不在', () => {
     const text = buildTeacherSystem()
-    expect(text).toContain('你是「归一 Unyra」的导师龟')
+    expect(text).toContain('你是「归一 Unyra」的导师（tutor）')
     expect(text).toContain('api.chat.send')
-    expect(text).toContain('examiner')
-    expect(text).toContain('designer')
-    expect(text).toContain('researcher')
+    expect(text).toContain('api.agent.list()')
     expect(text).toContain('api.work.create')
     expect(text).not.toContain('api.team.delegate')
     expect(text).not.toContain('【开讲】教学文档生成（teach-node）')
@@ -304,15 +312,15 @@ describe('系统提示词：role 只说话与调度，work 才带领域规程', 
     expect(text).not.toContain('【生成课堂】课堂课件生成（classroom）')
   })
 
-  it('经理龟 role 提示词：路由表齐、执行规程不在', () => {
+  it('调度员 role 提示词：只写自己的调度身份，名册现查不枚举', () => {
     const text = buildDispatcherSystem()
-    expect(text).toContain('经理龟')
-    expect(text).toContain('路由表')
-    expect(text).toContain('tutor（导师龟）')
-    expect(text).toContain('examiner（做题龟）')
-    expect(text).toContain('designer（设计龟）')
-    expect(text).toContain('researcher（调研龟）')
-    expect(text).toContain('fixer（维修龟）')
+    expect(text).toContain('调度员（dispatcher）')
+    expect(text).toContain('api.agent.list()')
+    expect(text).not.toContain('路由表')
+    expect(text).not.toContain('tutor（导师龟）')
+    expect(text).not.toContain('examiner（做题龟）')
+    expect(text).not.toContain('designer（设计龟）')
+    expect(text).not.toContain('researcher（调研龟）')
     expect(text).toContain('api.chat.send')
     expect(text).toContain('api.work.create')
     expect(text).toContain('api.work.status')
@@ -349,13 +357,14 @@ describe('系统提示词：role 只说话与调度，work 才带领域规程', 
     expect(buildWorkSystem('fixer')).toContain('#### api.node')
   })
 
-  it('自由聊天 role 提示词：只有 work / chat，联网与日程在 work', () => {
+  it('自由聊天 role 提示词：固定 work / chat / web，日程在 work', () => {
     const text = buildFreeChatSystem()
     expect(text).toContain('api.work.create')
     expect(text).toContain('api.chat.send')
-    expect(text).not.toContain('api.web.search')
+    expect(text).toContain('api.web.search')
+    expect(text).toContain('api.fetch')
     expect(text).not.toContain('api.schedule.*')
-    // 自由对话派出的 work 才带 web / schedule
+    // 自由对话派出的 work 也带 web / schedule
     expect(buildWorkSystem('free')).toContain('web.search(')
     expect(buildWorkSystem('free')).toContain('schedule.')
   })

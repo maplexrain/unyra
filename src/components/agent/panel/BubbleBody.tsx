@@ -8,7 +8,9 @@ import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { t } from '../../../i18n'
 import { splitChatText } from '../../../lib/chatText'
+import { splitWorkRefs, workInlineKey, type WorkInlineSource } from '../../../lib/workInline'
 import { BubbleRichText } from './BubbleRichText'
+import { WorkInline } from './WorkInline'
 
 export function BubbleBody({
   text,
@@ -16,27 +18,62 @@ export function BubbleBody({
   labels,
   tone = 'agent',
   onMention,
+  work,
+  messageId,
+  workAnchorByKey,
 }: {
   text: string
   names?: string[]
   labels?: Record<string, string>
   tone?: 'user' | 'agent'
   onMention?: (name: string) => void
+  /** 当前会话 / 群聊可见的 work 会话来解析正文里的 `[标题](work: id)` */
+  work?: WorkInlineSource
+  /** 当前气泡对应的通道消息 id：配合 workAnchorByKey 去重内嵌状态 */
+  messageId?: string
+  /** 同一个列表里「work 去重键 → 应显示它的消息 id」，见 lib/workInline 的 latestWorkAnchors */
+  workAnchorByKey?: Map<string, string>
 }) {
   const [open, setOpen] = useState(false)
   const parts = useMemo(() => splitChatText(text), [text])
   const hasDetail = Boolean(parts.detail)
   const showingDetail = hasDetail && open
+  const segments = useMemo(
+    () => splitWorkRefs(showingDetail ? parts.detail : parts.brief),
+    [showingDetail, parts],
+  )
+
+  /** 同一条气泡里也最多显示一次：详情/简短两段若都引用同一个 work，不叠两枚状态块。 */
+  const shownWorks = new Set<string>()
 
   return (
     <>
-      <BubbleRichText
-        text={showingDetail ? parts.detail : parts.brief}
-        names={names}
-        labels={labels}
-        tone={tone}
-        onMention={onMention}
-      />
+      {segments.map((segment, i) => {
+        if (segment.type === 'work') {
+          const key = workInlineKey(work, segment.workRef)
+          if (workAnchorByKey && messageId && workAnchorByKey.get(key) !== messageId) return null
+          if (shownWorks.has(key)) return null
+          shownWorks.add(key)
+          return (
+            <WorkInline
+              key={`work:${i}:${segment.workRef}`}
+              title={segment.title}
+              workRef={segment.workRef}
+              source={work}
+            />
+          )
+        }
+        return segment.text.trim() ? (
+          <BubbleRichText
+            key={`text:${i}`}
+            text={segment.text}
+            names={names}
+            labels={labels}
+            tone={tone}
+            onMention={onMention}
+          />
+        ) : null
+      })}
       {hasDetail ? (
         <button
           type="button"

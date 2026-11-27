@@ -41,6 +41,7 @@ import type {
   LanDeviceInfo, LanRequestFileOptions, LanRequestFileResult, LanServerStatus, LanUploadedFile,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
+  DevConsoleOpenResult, DevLogEntry, DesignPreviewStatus,
 } from '../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（渲染层与主进程共用一份，见该文件顶部）：
@@ -63,6 +64,7 @@ export type {
   CropBoxInput, CropImageResult, PreviewCropResult, RotateImageResult,
   ScreenCaptureResult, ScreenRecordResult, ImageSavePayload, ImageSaveResult, ImageCopyResult,
   ProjectFsRequest, ProjectFsResult,
+  DevConsoleOpenResult, DevLogEntry,
 }
 
 /* ---------- 只在 preload 这一侧用到的形状 ---------- */
@@ -623,6 +625,29 @@ const api = {
       ipcRenderer.on('trace:state', listener)
       return () => ipcRenderer.removeListener('trace:state', listener)
     },
+  },
+
+  /**
+   * 开发者控制台：主窗口那侧用 open；控制台窗口那侧用 logs / onEntry。
+   * 日志缓冲在主进程（见 electron/app/devLogs），控制台晚开也能回放之前的日志。
+   */
+  devConsole: {
+    /** 打开独立控制台窗口；已经开着就聚焦并回 reused */
+    open: (): Promise<DevConsoleOpenResult> => ipcRenderer.invoke('dev:open'),
+    /** 当前日志快照（仅控制台窗口可读） */
+    logs: (): Promise<DevLogEntry[]> => ipcRenderer.invoke('dev:logs'),
+    /** 订阅实时日志；返回取消订阅函数（组件卸载时必须调用） */
+    onEntry: (cb: (entry: DevLogEntry) => void): (() => void) => {
+      const listener = (_e: unknown, entry: DevLogEntry) => cb(entry)
+      ipcRenderer.on('dev:entry', listener)
+      return () => ipcRenderer.removeListener('dev:entry', listener)
+    },
+  },
+
+  /** 设计预览内置服务：应用启动时已监听，这里只查状态 / 兜底拉起 */
+  designPreview: {
+    status: (): Promise<DesignPreviewStatus> => ipcRenderer.invoke('designPreview:status'),
+    ensure: (): Promise<DesignPreviewStatus> => ipcRenderer.invoke('designPreview:ensure'),
   },
 
   /**

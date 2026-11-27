@@ -180,6 +180,7 @@ export function SideSplitLayout({ ctx, sourceTab, targetTab, primary }: SideSpli
             <SidePortalPane
               ctx={ctx}
               targetTab={targetTab}
+              webMountedElsewhere={ctx.store.fixSide?.targetTabId === targetTab.id}
               onClose={closePortal}
               onSwap={swapPortal}
             />

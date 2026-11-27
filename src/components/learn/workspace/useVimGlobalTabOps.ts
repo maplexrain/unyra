@@ -107,6 +107,8 @@ export function useVimGlobalTabOps(params: Params): void {
       const active = focusedTab(s.docArea)
       if (!active) return { success: false, message: '[当前无活动页签]' }
       if (targetTabId === active.id) return { success: false, message: '[无法与当前页面自身对照]' }
+      if (s.fixSide?.targetTabId === targetTabId)
+        return { success: false, message: '[该页签已在固定外侧栏中打开，不能重复并排]' }
       if (!findTab(s.docArea, targetTabId)) return { success: false, message: '[目标页签不存在]' }
       set({
         ...s,
@@ -145,6 +147,9 @@ export function useVimGlobalTabOps(params: Params): void {
       const s = getLatest()
       const exists = allStoredTabs(s.docArea).some((t) => t.id === targetTabId)
       if (!exists) return { success: false, message: '[目标页签不存在]' }
+      const active = focusedTab(s.docArea)
+      if (active?.side?.targetTabId === targetTabId)
+        return { success: false, message: '[该页签正在并排对照中，先关闭对照再固定]' }
       set({
         ...s,
         fixSide: {

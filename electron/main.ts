@@ -18,6 +18,8 @@
  *   windowState.ts 窗口尺寸/位置的记忆
  *   windows.ts     主窗口与页面加载、渲染层打点回收、console 转发、外链拦截
  *   examWindow.ts  考试窗口（第二个 BrowserWindow）
+ *   traceWindow.ts 上下文轨迹窗口（第三个 BrowserWindow）
+ *   devConsoleWindow.ts 开发者控制台（独立 BrowserWindow，日志见 devLogs.ts）
  *   tray.ts        托盘、收进托盘、退出、关窗拦截
  *   icon.ts        应用图标与应用菜单
  *   ipc.ts         通用 IPC 注册
@@ -38,6 +40,8 @@ import { createWindow, mainWindow, showMainWindow } from './app/windows'
 import { setupWebBrowser } from './app/webSession'
 import { closeExamWindow } from './app/examWindow'
 import { registerTraceIpc } from './app/traceWindow'
+import { installMainLogCapture } from './app/devLogs'
+import { registerDevConsoleIpc } from './app/devConsoleWindow'
 import { openScreenshotWindow, preloadScreenshotWindow, destroyScreenshotWindow, registerScreenshotIpc } from './app/screenshotWindow'
 import { registerPinIpc } from './app/pinWindow'
 import { startGlobalScreenshotShortcut, stopGlobalScreenshotShortcut } from './app/screenHelperHost'
@@ -51,6 +55,7 @@ import { cleanupAllMcpSessions, registerMcpIpc } from './mcp/ipc'
 import { registerMcpServeIpc, startMcpServe } from './mcp/serve'
 import { registerLanIpc } from './lan/ipc'
 import { lanServer } from './lan/server'
+import { registerDesignPreviewIpc, startDesignPreview, stopDesignPreview } from './designPreview/server'
 
 /* ---------- 启动追踪 ---------- */
 
@@ -58,6 +63,7 @@ import { lanServer } from './lan/server'
  * 这一行以上的时间（Electron 引导 + 本文件解析求值，含全部 import）不属于任何一段代码，
  * 只能整体看：它由 main:eval 这一笔间接反映出来。没开 MOJI_STARTUP_TRACE 时它什么都不做。
  */
+installMainLogCapture()
 initStartupTrace()
 
 /* ---------- 单实例 ---------- */
@@ -94,6 +100,9 @@ function main(): void {
   // 上下文轨迹窗口（trace:open / trace:push，见 app/traceWindow）：与其它 IPC 一样，
   // 必须在 app ready 之前把 handler 挂上——渲染层可能很早就来问
   registerTraceIpc()
+  // 开发者控制台（dev:open / dev:logs，见 app/devConsoleWindow）：与其它 IPC 一样
+  // 必须在 app ready 之前挂上——设置页随时可能来点「打开控制台」
+  registerDevConsoleIpc()
   registerScreenshotIpc()
   registerPinIpc()
   // 抓网页：只有 web:fetch 一个频道（见 electron/web）。放这里是因为它与其余 IPC 一样，
@@ -155,6 +164,9 @@ function main(): void {
     installLocalFileCsp()
     installAppMenu()
     registerBaseIpc()
+    // 设计预览内置服务：127.0.0.1 上的只读外部组件画布，端口 51900 起。
+    registerDesignPreviewIpc()
+    void startDesignPreview()
     // 对外 MCP 服务（应用本身当 MCP server：命名管道 + 端点文件 + token 握手，见 electron/mcp/serve）。
     // 管道先于窗口监听起来：界面还没就绪的调用会拿到可读的报错，而不是把外部 harness 挂着。
     startMcpServe()
@@ -195,6 +207,7 @@ function main(): void {
 
   app.on('window-all-closed', () => {
     void lanServer.stop()
+    void stopDesignPreview()
     cleanupAllProcesses()
     cleanupAllMcpSessions()
     if (process.platform !== 'darwin') app.quit()
@@ -205,6 +218,7 @@ function main(): void {
     stopGlobalScreenshotShortcut()
     destroyScreenshotWindow()
     void lanServer.stop()
+    void stopDesignPreview()
     cleanupAllProcesses()
     cleanupAllMcpSessions()
     markQuitting()

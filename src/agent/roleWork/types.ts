@@ -34,11 +34,6 @@ export interface WorkSendInput {
   text?: string
   /** 引用 role 会话里的用户消息 id，连同附件转发 */
   messageId?: string
-  /**
-   * 可选：把这次运行的实时状态挂在某个通道消息上（私聊通道或群聊都算）。
-   * 只是展示绑定，不影响任务内容；不传也能正常发。
-   */
-  bindMessageId?: string
   /** 随任务一起带过去的附件（chat.send 到 work 通道时用） */
   images?: MessageImage[]
   files?: MessageFile[]
@@ -92,7 +87,11 @@ export interface ChatSendInput {
   text: string
   /** 引用当前 role 会话里的用户消息（转发并标注来源） */
   messageId?: string
-  attachments?: ChatAttachmentInput[]
+  /**
+   * 附件：可传 `{ image|file, name? }`，也可直接传字符串（URL / workspace 路径 / moji:static 引用）。
+   * 字符串是模型最容易写对的形态，宿主会按图片/文件自动归类。
+   */
+  attachments?: (ChatAttachmentInput | string)[]
   /**
    * 正文之外的额外数据（长日志 / 原始结果 / JSON）：不占气泡正文，界面折叠展示。
    * 两个 agent 之间搬运大块材料时必须放这里，避免把聊天列表刷屏。

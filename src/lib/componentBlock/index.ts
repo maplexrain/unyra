@@ -12,6 +12,8 @@
 
 import { type PluginRenderContext, escapeHtml, encodeAttr } from '../renderPlugins'
 import { renderInline } from '../markdown'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { parseComponentBlock } from './parser'
 import {
   renderBreakdown,
@@ -56,24 +58,33 @@ export const COMPONENT_SYNTAX_GUIDE = `### 结构化教学排版组件（\`\`\`c
 #### 动态获取组件签名（Execute API）
 排版组件配方已解耦为动态注册中心，使用前请通过沙箱 API 动态获取组件签名：
 - \`api.design.component.list()\`（亦支持 \`api.design.componet.list()\`）：获取已注册组件清单，仅返回简短描述与组件 id，节省 token。
-- \`api.design.component.get(idOrTag)\`：获取组件详细签名（标签、可用插槽 slots、属性 attrs、示例 example 与模板）。
+- \`api.design.component.get(idOrTag)\`：获取组件详细签名（标签、可用插槽 slots、属性 attrs 与示例 example）。
 - \`api.design.component.register(...) / update(...) / delete(...)\`：动态注册与管理扩展配方组件。`
 
 /** 根据组件标签名调度对应的渲染器 */
 function renderSingleComponent(node: ComponentNode, ctx: ComponentRenderCtx): string {
   const customDef = getDocumentComponent(node.tag)
-  if (customDef?.template) {
-    let out = customDef.template
-    for (const [key, val] of Object.entries(node.attrs)) {
-      out = out.replaceAll(`{{${key}}}`, ctx.renderInline ? ctx.renderInline(val) : ctx.escape(val))
+  if (customDef?.component) {
+    try {
+      const slots: Record<string, string> = {}
+      for (const [name, items] of Object.entries(node.slots)) {
+        slots[name] = items
+          .map((it) => (ctx.renderInline ? ctx.renderInline(it.content) : ctx.escape(it.content)))
+          .join('\n')
+      }
+      const out = renderToStaticMarkup(
+        createElement(customDef.component, {
+          tag: node.tag,
+          attrs: node.attrs,
+          slots,
+          content: slots.describe ?? node.rawText,
+          node,
+        }),
+      )
+      if (out) return out
+    } catch (err) {
+      console.warn('[componentBlock] 外部 React 组件渲染失败，退回通用卡片:', err)
     }
-    for (const [slot, items] of Object.entries(node.slots)) {
-      const slotContent = items
-        .map((it) => (ctx.renderInline ? ctx.renderInline(it.content) : ctx.escape(it.content)))
-        .join('\n')
-      out = out.replaceAll(`{{${slot}}}`, slotContent)
-    }
-    return out
   }
 
   const tag = node.tag.toLowerCase()

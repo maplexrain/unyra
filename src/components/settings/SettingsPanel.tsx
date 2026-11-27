@@ -31,7 +31,7 @@ import {
 import { t } from '../../i18n'
 import { type SwitchRootResult } from '../../lib/boot'
 import { AppearancePanel } from './AppearancePanel'
-import { DocDesignPanel } from './DocDesignPanel'
+import { DesignPanel } from './DesignPanel'
 import { ReminderPanel } from './ReminderPanel'
 import { PerformancePanel } from './PerformancePanel'
 import type { ScheduleSound } from '../../learn/schedule'
@@ -61,6 +61,8 @@ interface Props {
   onScheduleSoundChange?: (patch: Partial<ScheduleSound>) => void
   /** 左栏顶部的「常规 / 智能体」切换（由 SettingsPage 注入） */
   sectionSwitch?: ReactNode
+  /** 用应用自己的文件页签打开外部 TSX；路径由上层转成绝对路径 */
+  onOpenFile?: (rel: string, title?: string) => void
 }
 
 type Page = { view: 'list' } | { view: 'config'; providerId: string }
@@ -80,12 +82,26 @@ export default function SettingsPanel({
   scheduleSound,
   onScheduleSoundChange,
   sectionSwitch,
+  onOpenFile,
 }: Props) {
   const initial = loadAiSettings()
   const [tab, setTab] = useState<TabKey>(loadSavedTab)
   const [activeSubTab, setActiveSubTab] = useState<string>('theme')
   const [highlightSubTab, setHighlightSubTab] = useState<{ key: string; nonce: number } | null>(null)
   const highlightNonceRef = useRef(0)
+
+  // 课堂页「在设计中管理」等入口通过事件切到设计分页；已打开的设置页也能收到。
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const key = (event as CustomEvent<TabKey>).detail
+      if (!key) return
+      setTab(key)
+      saveTab(key)
+    }
+    window.addEventListener('moji:switch-settings-tab', handler)
+    return () => window.removeEventListener('moji:switch-settings-tab', handler)
+  }, [])
+
   /** 换分页一律走它：选择跟着落盘，下次打开设置还停在这一页 */
   const selectTab = (key: TabKey) => {
     setTab(key)
@@ -343,7 +359,7 @@ export default function SettingsPanel({
               {tab === 'appearance'
                 ? t('外观')
                 : tab === 'doc-design'
-                  ? t('文档设计')
+                  ? t('设计')
                   : tab === 'reminder'
                   ? t('提醒')
                 : tab === 'performance'
@@ -452,7 +468,7 @@ export default function SettingsPanel({
             onSubTabChange={setActiveSubTab}
           />
         ) : tab === 'doc-design' ? (
-          <DocDesignPanel onToast={onToast} />
+          <DesignPanel onToast={onToast} onOpenFile={onOpenFile} />
         ) : tab === 'input' ? (
           <InputPanel onToast={onToast} />
         ) : tab === 'reminder' ? (

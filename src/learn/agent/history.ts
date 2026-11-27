@@ -14,7 +14,7 @@ import {
   type ConversationMessage,
   type MessageImage,
 } from '../../agent/types'
-import type { ChatMessage } from '../../ai/types'
+import type { ChatMessage, ServerToolStep } from '../../ai/types'
 import { budgetChars, imagePart, textPart } from '../../ai/content'
 import { attachmentMetaBlock, fileBlock } from '../attachments'
 import { summaryBlock } from '../compact'
@@ -116,17 +116,19 @@ export function toChatHistory(
     for (const seg of hopSegments(m.parts)) {
       const text = seg.filter((p) => p.type === 'text').map((p) => p.text).join('')
       const calls = seg.filter((p): p is Extract<AgentPart, { type: 'tool' }> => p.type === 'tool')
+      const webs = seg.filter((p): p is Extract<AgentPart, { type: 'web' }> => p.type === 'web')
       /**
        * 本跳的思考原文：思考模型的回传契约（GLM/DeepSeek V4 缺了直接 400）。各 delta
        * 按到达顺序合并，与 agent/runtime 实发 push 的 result.reasoning 逐字节一致；
        * 键序（content 之后、tool_calls 之前）也要一致——前缀门禁按整消息 JSON 比对。
        */
       const thinking = seg.filter((p) => p.type === 'thinking').map((p) => p.text).join('')
-      if (text || calls.length) {
+      if (text || calls.length || webs.length) {
         out.push({
           role: 'assistant',
           content: text || null,
           ...(thinking ? { reasoning_content: thinking } : {}),
+          ...(webs.length ? { server_tool_calls: serverStepsOf(webs) } : {}),
           ...(calls.length
             ? {
                 tool_calls: calls.map((t) => ({
@@ -216,6 +218,25 @@ function hopSegments(parts: AgentPart[]): AgentPart[][] {
 }
 
 /**
+ * 把界面上的 web 片段还原成服务端 `server_tool_calls` 的步骤结构。
+ * 同一步的多个呼叫按出现顺序合并；`reasoning` 是服务端给这一步的思考原文，
+ * 回传时不能丢——signature 与它一起决定上一轮读过的网页还在不在上下文里。
+ */
+function serverStepsOf(webs: Array<Extract<AgentPart, { type: 'web' }>>): ServerToolStep[] {
+  const steps = new Map<number, ServerToolStep>()
+  for (const w of webs) {
+    const step = steps.get(w.step) ?? {
+      index: w.step,
+      ...(w.reasoning !== undefined ? { reasoningContent: w.reasoning } : {}),
+      calls: [],
+    }
+    step.calls.push(w.call)
+    steps.set(w.step, step)
+  }
+  return [...steps.values()].sort((a, b) => a.index - b.index)
+}
+
+/**
  * 砍掉配不成对的工具调用/返回。
  *
  * 两种残缺都会让服务端直接报错：只有 tool_calls 没有返回（上一轮出错或被打断），
@@ -245,6 +266,7 @@ function dropOrphans(history: ChatMessage[]): ChatMessage[] {
         role: 'assistant',
         content: m.content,
         ...(m.reasoning_content !== undefined ? { reasoning_content: m.reasoning_content } : {}),
+        ...(m.server_tool_calls?.length ? { server_tool_calls: m.server_tool_calls } : {}),
       })
       continue
     }
@@ -260,7 +282,9 @@ function dropOrphans(history: ChatMessage[]): ChatMessage[] {
 function withinBudget(history: ChatMessage[]): ChatMessage[] {
   // 图片按 base64 长度计入：一张图往往比一整段文字还重，先丢它才划算
   // 图片按张数折算，不按 base64 长度——否则一张大图就能把整段历史（含本次提问）顶掉
-  const size = (m: ChatMessage) => budgetChars(m.content)
+  // server_tool_calls 里的 signature 也是实打实占上下文，按 JSON 长度计入
+  const size = (m: ChatMessage) =>
+    budgetChars(m.content) + (m.server_tool_calls ? JSON.stringify(m.server_tool_calls).length : 0)
   let chars = history.reduce((sum, m) => sum + size(m), 0)
   let start = 0
   while (start < history.length && chars > MAX_HISTORY_CHARS) {

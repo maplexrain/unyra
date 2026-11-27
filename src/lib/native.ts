@@ -30,6 +30,7 @@ import type {
   CapsFilesDeleteRequest, CapsFilesDeleteResult, CapsFilesListRequest, CapsFilesListResult,
   CapsFilesRetrieveRequest, CapsFilesRetrieveResult, CapsOcrRequest, CapsOcrResult,
   CapsSttRequest, CapsSttResult, CapsTtsRequest, CapsTtsResult,
+  DevConsoleOpenResult, DevLogEntry, DesignPreviewStatus,
 } from '../../shared/ipc'
 
 // 这些契约形状统一在 shared/ipc.ts（与 electron/preload.ts 共用一份，见该文件顶部）：
@@ -54,6 +55,7 @@ export type {
   CapsFilesDeleteRequest, CapsFilesDeleteResult, CapsFilesListRequest, CapsFilesListResult,
   CapsFilesRetrieveRequest, CapsFilesRetrieveResult, CapsOcrRequest, CapsOcrResult,
   CapsSttRequest, CapsSttResult, CapsTtsRequest, CapsTtsResult,
+  DevConsoleOpenResult, DevLogEntry, DesignPreviewStatus,
 }
 
 export type PluginList =
@@ -358,6 +360,23 @@ export interface NativeBridge {
   traceGuest: {
     /** 订阅主窗口推来的会话数据；返回取消订阅函数 */
     onState(cb: (payload: unknown) => void): () => void
+  }
+  /**
+   * 开发者控制台（独立 BrowserWindow，`?devConsole=1` 分支）：主窗口那侧 open，
+   * 控制台窗口那侧 logs / onEntry。日志缓冲在主进程，晚开也能回放之前的日志。
+   */
+  devConsole: {
+    /** 打开独立控制台窗口；已经开着就聚焦并回 reused */
+    open(): Promise<DevConsoleOpenResult>
+    /** 当前日志快照（仅控制台窗口可读） */
+    logs(): Promise<DevLogEntry[]>
+    /** 订阅实时日志；返回取消订阅函数 */
+    onEntry(cb: (entry: DevLogEntry) => void): () => void
+  }
+  /** 设计预览内置 HTTP 服务（只读扫描 doc-design，浏览器打开预览画布） */
+  designPreview: {
+    status(): Promise<DesignPreviewStatus>
+    ensure(): Promise<DesignPreviewStatus>
   }
   /**
    * 模型能力（TTS / STT / OCR / Files API，设置 → 模型 → 能力接入）。

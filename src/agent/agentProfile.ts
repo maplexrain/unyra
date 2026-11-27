@@ -20,7 +20,7 @@ import type { ResolvedProvider } from '../ai/client'
 import { loadAgentSettings, saveAgentSettings, type AgentSettings } from './settings'
 
 /**
- * role id（六位团队 role；interface 的 AgentTeamMode 仍是历史命名）：
+ * role id（内置团队 role；interface 的 AgentTeamMode 仍是历史命名）：
  * - tutor       导师：主讲与协调（教学对话、大纲、画像、日程），教学主线 role；
  * - dispatcher  调度员：接收用户需求，用 chat.send 派给对应 role / 用 work 派活，交付结果——
  *               **节点宇宙与其他地方发起的工作流统一经过它路由**；
@@ -82,7 +82,7 @@ export interface AgentProfile {
 
 /**
  * 头像目录：id → 展示名。可视映射在 components 一侧（agentAvatars.tsx：龟龟图片 +
- * lucide 图标），这里只存纯数据。龟龟是六位团队声部的默认形象，图标款是设置里的备选。
+ * lucide 图标），这里只存纯数据。龟龟是内置 role 的既有默认形象，图标款是设置里的备选。
  */
 export const AGENT_AVATARS: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'turtle-tutor', label: '导师龟' },
@@ -104,7 +104,7 @@ export const AGENT_AVATARS: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'route', label: '路线' },
 ]
 
-/** 默认显示名（团队六位：归一的 xx 龟；自由对话是无目标页签，不列入龟门排行） */
+/** 默认显示名（各内置 role 的默认称呼；自由对话是无目标页签，不进入名册） */
 export const DEFAULT_AGENT_NAME: Record<AgentProfileId, string> = {
   free: '自由对话',
   tutor: '导师龟',
@@ -143,16 +143,18 @@ export function bioOf(profile: AgentProfile | undefined, agentId: AgentProfileId
 /* ---------- 团队分工：api 能力面 ---------- */
 
 /**
- * **work 层的领域能力面**：role 只负责沟通与调度，领域执行能力全部下沉到 work。
+ * **work 层的领域能力面**：role 只负责沟通、调度与固定联网，其他领域执行能力下沉到 work。
  * 这里保留原有分工表，作为 `workPlaneOfRole` 的输入；role 自己的 `AGENT_API_PLANES`
- * 不再读取它（role 只有固定的 work/chat/tmp/agent/compact）。
+ * 不再读取它（role 固定 tmp/web/work/chat/agent/delivery + see/ask/fetch/compact）。
  *
  * 分配原则：
- * - core 顶层原语（wait / ask / tiktok / compact / fetch / see）按需给：ask / see 给
- *   要与人交互、要看图面的 work；fetch 只给有 web 组的 work；
- * - 域专属组只给对应的 work（exam → 出卷、classroom → 设计、browser → 调研、
+ * - **see / ask / delivery 是全员固定基础能力**（role 与 work 都有）：看图、结构化收集答案、
+ *   登记交付账不按职责裁剪；
+ * - 领域组只给对应的 work（exam → 出卷、classroom → 设计、browser → 调研、
  *   mcp / permission → 只有导师派出的 work）——职责拆分就是能力面拆分；
- * - 交付登记（delivery）与临时变量（tmp）按 role 给；work 固定补 host。
+ * - **web（search / fetch）与 fetch 顶层是全员固定联网面**：每位 role 自己的 work
+ *   都能直接查资料、读原文，不再只挂在调研员身上；
+ * - 临时变量（tmp）与回传 role 的 host 也是固定项。
  */
 export interface AgentApiPlane {
   /** 文档与设置页展示的 api 组（'core' 只作文档展示；运行时放行走 topLevel + 组名） */
@@ -163,7 +165,7 @@ export interface AgentApiPlane {
 
 /** 领域 work 通用顶层原语：等待、表单、响铃与压缩交接 */
 const CORE_TOP_LEVEL_ALL = ['wait', 'ask', 'tiktok', 'compact'] as const
-/** 带联网的 work 额外拿 fetch（web.fetch 的别名）；看图面另给 see */
+/** 全员固定联网面：fetch（web.fetch 的别名）与看图 see，所有 work 都持有 */
 const CORE_TOP_LEVEL_WEB = [...CORE_TOP_LEVEL_ALL, 'fetch', 'see'] as const
 
 export const WORK_DOMAIN_PLANES: Record<AgentVoice, AgentApiPlane> = {
@@ -171,16 +173,16 @@ export const WORK_DOMAIN_PLANES: Record<AgentVoice, AgentApiPlane> = {
     groups: [
       'node', 'memory', 'schedule', 'tmp', 'workspace', 'userInfo', 'method', 'wf',
       'chip', 'delivery', 'mcp', 'ui', 'permission',
-      'files', 'process', 'skill', 'video', 'project', 'work', 'chat', 'design',
+      'files', 'process', 'skill', 'video', 'project', 'work', 'chat', 'design', 'web',
     ],
-    // 联网调研已分给调研员：导师没有 web / browser / fetch，只有看图的 see
-    topLevel: [...CORE_TOP_LEVEL_ALL, 'see'] as const,
+    // web / fetch 是全员固定联网面；browser 仍是调研员的专属
+    topLevel: CORE_TOP_LEVEL_WEB,
   },
   dispatcher: {
     // 调度员派出的 work：能现查目标结构、跑具体执行；没有自己的沟通通道
-    groups: ['tmp', 'node', 'work', 'chat'],
+    groups: ['tmp', 'node', 'work', 'chat', 'web'],
     // 派活前要 ask 澄清；交付前要响铃提醒
-    topLevel: CORE_TOP_LEVEL_ALL,
+    topLevel: CORE_TOP_LEVEL_WEB,
   },
   examiner: {
     groups: [
@@ -190,29 +192,30 @@ export const WORK_DOMAIN_PLANES: Record<AgentVoice, AgentApiPlane> = {
     topLevel: CORE_TOP_LEVEL_WEB,
   },
   designer: {
-    groups: ['node', 'tmp', 'method', 'delivery', 'classroom', 'work', 'chat', 'design'],
-    // 课堂与实验都不联网：问需求要 ask（超级实验室的第一步），没有 fetch / see
-    topLevel: CORE_TOP_LEVEL_ALL,
+    groups: ['node', 'tmp', 'method', 'delivery', 'classroom', 'work', 'chat', 'design', 'web'],
+    // web / fetch 全员固定；课堂与实验的领域能力仍只在 design / classroom
+    topLevel: CORE_TOP_LEVEL_WEB,
   },
   researcher: {
     groups: ['tmp', 'workspace', 'delivery', 'web', 'browser', 'work', 'chat'],
     topLevel: CORE_TOP_LEVEL_WEB,
   },
   fixer: {
-    groups: ['node', 'tmp', 'work', 'chat'],
-    topLevel: ['wait', 'compact'],
+    groups: ['node', 'tmp', 'work', 'chat', 'web'],
+    topLevel: CORE_TOP_LEVEL_WEB,
   },
 }
 
 /**
- * role 层能力面：六位团队 role 只保留「对外沟通 + 对内调度」所需的固定面。
- * 领域组（node / exam / classroom / web / browser / files …）全部只在 work 面出现；
- * role 不需要 `wait`（loop 不阻塞），也不需要 `ask`（问用户用 chat.send 一句话即可，
- * 不把当前 loop 挂住）。`help` 恒在场，渲染时单独补；`agent` 只提供只读名录。
+ * role 层能力面：所有内置 role 只保留「对外沟通 + 对内调度 + 固定联网」所需的固定面。
+ * 除固定 web 组外，领域组（node / exam / classroom / browser / files …）全部只在 work 面出现；
+ * **see / ask / delivery / web 是全员固定基础能力**：role 也能看图、能收结构化答案、能登记交付账、
+ * 能直接联网查资料；但「需要用户明确回答」时必须委派 work 走 ask 表单（见 ROLE_WORK_GUIDE），
+ * role 不把当前 loop 挂在表单上。`help` 恒在场，渲染时单独补；`agent` 只提供只读名录。
  */
-export const ROLE_FIXED_GROUPS = ['tmp', 'work', 'chat', 'agent'] as const
-/** role 固定顶层：只留上下文压缩交接；wait/ask/tiktok/fetch/see 全部只在 work 面 */
-export const ROLE_FIXED_TOP_LEVEL = ['compact'] as const
+export const ROLE_FIXED_GROUPS = ['tmp', 'web', 'work', 'chat', 'agent', 'delivery'] as const
+/** role 固定顶层：上下文压缩交接 + 全员基础能力 see / ask / fetch */
+export const ROLE_FIXED_TOP_LEVEL = ['see', 'ask', 'compact', 'fetch'] as const
 
 const ROLE_API_PLANE: AgentApiPlane = {
   groups: ROLE_FIXED_GROUPS,
@@ -253,10 +256,13 @@ export function workPlaneOfRole(voice: AgentVoice): AgentApiPlane {
   // 每个 work 都能登记结构化交付：host.send 带回 role 时，交付账随消息一起走。
   if (!groups.includes('delivery')) groups.push('delivery')
   if (!groups.includes('host')) groups.push('host')
+  // 固定联网面：web / fetch 全员持有，不随 role 分工裁剪。
+  if (!groups.includes('web')) groups.unshift('web')
   const topLevel = role.topLevel.filter((n) => !WORK_EXCLUDED_TOP_LEVEL.has(n))
-  if (!topLevel.includes('wait')) topLevel.unshift('wait')
-  if (!topLevel.includes('ask')) topLevel.unshift('ask')
-  if (!topLevel.includes('compact')) topLevel.push('compact')
+  // 全员固定基础能力：等、答、看、压缩、抓网页。领域面再怎么裁剪也不能缺这五项。
+  for (const name of ['wait', 'ask', 'see', 'compact', 'fetch'] as const) {
+    if (!topLevel.includes(name)) topLevel.push(name)
+  }
   return { groups, topLevel }
 }
 
@@ -264,7 +270,7 @@ export function workPlaneOfRole(voice: AgentVoice): AgentApiPlane {
 export function freeWorkPlane(): AgentApiPlane {
   return {
     groups: ['tmp', 'web', 'schedule', 'delivery', 'host'],
-    topLevel: ['wait', 'ask', 'compact', 'fetch'],
+    topLevel: ['wait', 'ask', 'see', 'compact', 'fetch'],
   }
 }
 
@@ -278,10 +284,10 @@ export const WORK_API_PLANES: Record<AgentProfileId, AgentApiPlane> = {
   fixer: workPlaneOfRole('fixer'),
 }
 
-/** work 层固定组：临时变量 + 回传 role 的唯一通道 */
+/** work 层固定组：临时变量 + 固定联网 + 交付账 + 回传 role 的唯一通道 */
 export const WORK_FIXED_PLANE: AgentApiPlane = {
-  groups: ['tmp', 'host'],
-  topLevel: ['wait', 'compact'],
+  groups: ['tmp', 'web', 'delivery', 'host'],
+  topLevel: ['wait', 'ask', 'see', 'compact', 'fetch'],
 }
 
 /** work 运行时 apiAllow：本 role 的 work 面 */
@@ -293,11 +299,11 @@ export function workRuntimeApiAllow(role: AgentProfileId): string[] {
 /* ---------- 工作流面（role 仍可触发；work 只在 role 派活时执行） ---------- */
 
 /**
- * **固定能力面**：六位挂目标 role**逐位都持有**的 api 组与顶层函数（AGENT_API_PLANES 求交）。
+ * **固定能力面**：所有挂目标 role**逐位都持有**的 api 组与顶层函数（AGENT_API_PLANES 求交）。
  * 它是「固定组 / 非固定组」这条分线的唯一口径，设置页的 execute 清单与系统提示词的
  * api 速查都从这里取：
- * - 固定组 = role 协作基座（tmp / work / chat / agent）+ 人人都有的执行控制（wait / compact；help 恒在场，
- *   渲染时单独补，不算交集成员）；
+ * - 固定组 = role 协作基座（tmp / work / chat / agent / delivery）+ 固定联网面（web / fetch）
+ *   + 人人都有的执行控制（see / ask / compact；help 恒在场，渲染时单独补，不算交集成员）；
  * - 非固定组 = 其余按职责分配的域（node / exam / classroom / browser …）。
  *
  * 之所以**求交而不是手写常量**：以后谁的能力面增减（例如给 fixer 补 ask），固定组的
@@ -444,9 +450,9 @@ export function resolveAgentGlobal(
 }
 
 /**
- * 仅聊天 role 的沙箱基座：work / chat / agent / tmp，加上顶层 compact；领域与联网能力全在 work。
+ * 仅聊天 role 的沙箱基座：work / chat / agent / tmp / web，加上顶层 compact / fetch；日程等其余领域能力在 work。
  * 能力面同样由架构固定、不可增删。
  */
-export const FREE_AGENT_GROUPS = ['tmp', 'work', 'chat', 'agent'] as const
-export const FREE_AGENT_TOP_LEVEL = ['compact'] as const
-export const FREE_AGENT_API_ITEMS = ['work', 'chat', 'agent'] as const
+export const FREE_AGENT_GROUPS = ['tmp', 'web', 'work', 'chat', 'agent'] as const
+export const FREE_AGENT_TOP_LEVEL = ['compact', 'fetch'] as const
+export const FREE_AGENT_API_ITEMS = ['web', 'work', 'chat', 'agent'] as const

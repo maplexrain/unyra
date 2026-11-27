@@ -41,6 +41,11 @@ const dict: Record<string, string> = {
   '归一 Unyra · 上下文轨迹': 'Unyra · Context trace',
   '轨迹窗口打不开': "Couldn't open the context trace window",
 
+  /* ---------- app/devConsoleWindow.ts ---------- */
+  '归一 Unyra · 开发者控制台': 'Unyra · Developer console',
+  '开发者控制台窗口打不开': "Couldn't open the developer console window",
+  '只能在主窗口打开开发者控制台': 'The developer console can only be opened from the main window',
+
   /* ---------- app/ipc.ts：截图与导出 ---------- */
   '没有可用的窗口': 'No available window',
   '截出来是空的': 'The screenshot came out empty',

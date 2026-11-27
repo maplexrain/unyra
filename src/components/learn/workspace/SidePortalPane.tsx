@@ -4,7 +4,7 @@
  * 被选中的原页签在原位置不受任何影响，仅通过该通道开出一扇实时对照传送窗）。
  */
 
-import { ArrowLeftRight, ExternalLink, Link2, Video, Globe, X } from 'lucide-react'
+import { ArrowLeftRight, ExternalLink, Globe, Link2, Video, X } from 'lucide-react'
 import type { LearnTab } from '../../../learn/types'
 import { tabKey, tabTitle, viewOf } from '../../../learn/tabs'
 import { draftOf } from '../../../learn/drafts'
@@ -16,7 +16,6 @@ import { parseSuperHref, handleSuperLink } from '../../../lib/nodeLink'
 import { requestSourceReveal, localRevealKey, nodeRevealKey } from '../../../lib/docReveal'
 import { nodeById } from '../../../learn/graph'
 import { isWeb } from '../../../lib/native'
-import { openExternalLink } from '../../../lib/externalLink'
 import { t } from '../../../i18n'
 import { TabTypeIcon } from '../tabbar/TabIcons'
 import LocalDoc from '../LocalDoc'
@@ -33,7 +32,6 @@ import UserTabPane from '../../user/UserTabPane'
 import TerminalTabPane from '../../terminal/TerminalTabPane'
 import UsagePanel from '../../settings/UsagePanel'
 import ClassroomView from '../classroom/ClassroomView'
-import ClassroomShowcasePage from '../classroom/ClassroomShowcasePage'
 import AgentTeamPage from '../agent-team/AgentTeamPage'
 import { SchedulePage } from '../../schedule/SchedulePage'
 import MindPanel from '../../agent/MindPanel'
@@ -41,6 +39,7 @@ import { EmptyDoc } from './chrome'
 import { DocPane } from './DocPane'
 import { OutlinePane } from './OutlinePane'
 import SourceEditor from '../SourceEditor'
+import WebTabLayer, { type WebTab } from '../web/WebTabLayer'
 import { conceptKeysOf, emptyNote, examCopyOf, paneOf } from './panes'
 import { SRC_SCROLL_SUFFIX } from './constants'
 import type { GroupBodyCtx } from './GroupBodyCtx'
@@ -49,11 +48,20 @@ export interface SidePortalPaneProps {
   ctx: GroupBodyCtx
   targetTab: LearnTab
   mode?: 'side' | 'fixside'
+  /** side 与 fixside 指向同一网页时，由 fixside 唯一挂载，side 只做占位。 */
+  webMountedElsewhere?: boolean
   onClose: () => void
   onSwap: () => void
 }
 
-export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap }: SidePortalPaneProps) {
+export function SidePortalPane({
+  ctx,
+  targetTab,
+  mode = 'side',
+  webMountedElsewhere = false,
+  onClose,
+  onSwap,
+}: SidePortalPaneProps) {
   const scopePrefix = mode === 'fixside' ? 'fixside:' : 'side:'
   const {
     store,
@@ -104,6 +112,12 @@ export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap 
     onDeleteUser,
     onSignOut,
     groupId,
+    webMeta,
+    patchWebMeta,
+    commitWebUrl,
+    pendingJumpsRef,
+    isUrlFavorite,
+    toggleUrlFavorite,
   } = ctx
 
   const title = tabTitle(
@@ -397,16 +411,11 @@ export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap 
             set({ ...latest, classrooms: nextList })
           }}
           onOpenTab={(kind, targetId) => {
-            if (kind === 'classroomShowcase') openTab({ kind: 'classroomShowcase', tag: targetId || undefined })
-            else if (kind === 'doc') openTab({ kind: 'teach', nodeId: targetId })
+            if (kind === 'doc') openTab({ kind: 'teach', nodeId: targetId })
           }}
           onGenerateClassroom={canvasChannel?.onGenerateClassroom}
         />
       )
-    }
-
-    if (ref.kind === 'classroomShowcase') {
-      return <ClassroomShowcasePage initialTag={ref.tag} />
     }
 
     if (ref.kind === 'draft') {
@@ -424,33 +433,36 @@ export function SidePortalPane({ ctx, targetTab, mode = 'side', onClose, onSwap 
     }
 
     if (ref.kind === 'web') {
-      return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-card p-6 text-center">
-          <Globe size={30} className="text-seal/70" />
-          <div className="text-[13.5px] font-semibold text-ink-strong">{title}</div>
-          <p className="max-w-sm break-all text-[12px] text-ink-faint">
-            {ref.url || t('内置网页实例保留在原页签中，可通过下方按钮跳转或外部打开')}
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => activateTab(targetTab.id)}
-              className="flex items-center gap-1.5 rounded-lg border border-line-strong/80 bg-paper px-3 py-1.5 text-[12px] font-medium text-ink-strong transition hover:bg-line/40"
-            >
-              <Link2 size={13} />
-              {t('切到原页签')}
-            </button>
-            {ref.url && (
-              <button
-                type="button"
-                onClick={() => void openExternalLink(ref.url)}
-                className="flex items-center gap-1.5 rounded-lg bg-seal px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-seal-deep"
-              >
-                <ExternalLink size={13} />
-                {isWeb() ? t('在当前浏览器打开') : t('外部浏览器打开')}
-              </button>
-            )}
+      if (webMountedElsewhere) {
+        return (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-card p-6 text-center select-none">
+            <Globe size={30} className="text-seal/70" />
+            <div className="text-[13.5px] font-semibold text-ink-strong">{t('此网页在固定外侧栏中')}</div>
+            <p className="max-w-sm text-[12px] text-ink-faint">
+              {t('同一份页面只挂一枚 webview；这里不再重复挂载，关掉并排对照即可。')}
+            </p>
           </div>
+        )
+      }
+      /*
+       * side 里的网页 tab 就是原页签的同一枚 webview：用原 tab.id 挂载，
+       * 主画布不再为它挂第二枚 guest，滚动、历史、表单都只有一份。
+       * side 自己的滚动/历史 key 仍由 scopePrefix 隔离（见上方 historyKey）。
+       */
+      const sideTab: WebTab = { ...targetTab, ref }
+      return (
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <WebTabLayer
+            tabs={[sideTab]}
+            activeId={targetTab.id}
+            meta={{ [targetTab.id]: webMeta[targetTab.id] ?? { url: ref.url } }}
+            hidden={false}
+            onMeta={(_tabId, patch) => patchWebMeta(targetTab.id, patch)}
+            onCommitUrl={(_tabId, url) => commitWebUrl(targetTab.id, url)}
+            favoriteOf={isUrlFavorite}
+            onToggleFavoriteUrl={toggleUrlFavorite}
+            pendingJumpsRef={pendingJumpsRef}
+          />
         </div>
       )
     }

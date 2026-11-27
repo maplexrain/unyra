@@ -1,6 +1,30 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+const memFiles = vi.hoisted(() => new Map<string, string>())
+vi.mock('../src/lib/storage', () => ({
+  userPath: (rel: string) => rel,
+  userAbsPath: (rel: string) => `/mem/${rel}`,
+  listUserDir: async (rel: string) =>
+    rel === 'doc-design'
+      ? [...memFiles.keys()]
+          .filter((key) => key.startsWith('doc-design/'))
+          .map((key) => ({ name: key.slice('doc-design/'.length), dir: false }))
+      : [],
+  readUserText: async (rel: string) => memFiles.get(rel) ?? null,
+  writeUserText: async (rel: string, content: string) => {
+    memFiles.set(rel, content)
+    return true
+  },
+  removeUserPath: async (rel: string) => memFiles.delete(rel),
+  mkdirUserPath: async () => true,
+  onUserTextWritten: () => () => {},
+}))
+
 import {
+  createClassroomAnimationFile,
+  createClassroomComponentFile,
+  createClassroomSoundFile,
   listClassroomComponents,
   listClassroomAnimations,
   registerClassroomComponent,
@@ -12,10 +36,13 @@ import {
 } from '../src/learn/classroom/registry'
 import { expandClassroomComponents } from '../src/learn/classroom/components'
 import { buildApi } from '../src/agent/sandbox/api'
+import { clearExternalModules } from '../src/lib/externalModules'
 
 describe('Classroom Component & Animation Registry', () => {
   beforeEach(() => {
     localStorage.clear()
+    memFiles.clear()
+    clearExternalModules()
   })
 
   it('lists builtin components and animations', () => {
@@ -37,15 +64,32 @@ describe('Classroom Component & Animation Registry', () => {
     expect(anims.some((a) => a.verb === 'slideInDown')).toBe(false)
   })
 
-  it('allows registering and unregistering external components', () => {
-    const regRes = registerClassroomComponent({
+  it('allows registering and unregistering external components', async () => {
+    const source = `export default {
+  kind: 'classroom-component',
+  tag: 'ui-chem-reaction',
+  name: '化学反应式',
+  description: '展示化学方程式与反应条件',
+  defaultProps: { equation: '2H2 + O2 -> 2H2O' },
+  component: ({ content = '', props = {}, attrs = {} }) => {
+    const merged = { ...props, ...attrs }
+    return (
+      <div className="chem-box">
+        <h4>{merged.equation}</h4>
+        <div className="chem-desc" dangerouslySetInnerHTML={{ __html: content }} />
+      </div>
+    )
+  },
+}`
+    const regRes = await registerClassroomComponent({
       tag: 'ui-chem-reaction',
       name: '化学反应式',
       description: '展示化学方程式与反应条件',
-      template: '<div class="chem-box"><h4>{{equation}}</h4><div class="chem-desc">{{content}}</div></div>',
       defaultProps: { equation: '2H2 + O2 -> 2H2O' },
+      source,
     })
     expect(regRes.ok).toBe(true)
+    expect(regRes.file).toContain('classroom-component--ui-chem-reaction.tsx')
 
     const comp = getClassroomComponent('ui-chem-reaction')
     expect(comp).toBeDefined()
@@ -60,13 +104,31 @@ describe('Classroom Component & Animation Registry', () => {
     expect(expanded).toContain('chem-box')
 
     // 注销
-    const unreg = unregisterClassroomComponent('ui-chem-reaction')
+    const unreg = await unregisterClassroomComponent('ui-chem-reaction')
     expect(unreg).toBe(true)
     expect(getClassroomComponent('ui-chem-reaction')).toBeUndefined()
   })
 
-  it('allows registering and querying custom animations', () => {
-    const regRes = registerClassroomAnimation({
+  it('直接新建组件/动效/音效模板文件，不经过表单', async () => {
+    const comp = await createClassroomComponentFile()
+    expect(comp.ok).toBe(true)
+    expect(comp.file).toMatch(/^doc-design\/classroom-component--ui-new-.+\.tsx$/)
+    expect(memFiles.get(comp.file!)).toContain("kind: 'classroom-component'")
+    expect(memFiles.get(comp.file!)).toContain('component:')
+
+    const anim = await createClassroomAnimationFile()
+    expect(anim.ok).toBe(true)
+    expect(anim.file).toMatch(/^doc-design\/classroom-animation--new-.+\.tsx$/)
+    expect(memFiles.get(anim.file!)).toContain("kind: 'classroom-animation'")
+
+    const sound = await createClassroomSoundFile()
+    expect(sound.ok).toBe(true)
+    expect(sound.file).toMatch(/^doc-design\/classroom-sound--sound-.+\.tsx$/)
+    expect(memFiles.get(sound.file!)).toContain('play(v, kit)')
+  })
+
+  it('allows registering and querying custom animations', async () => {
+    const regRes = await registerClassroomAnimation({
       verb: 'quantumVibrate',
       name: '量子高频微颤',
       description: '极小幅度超高频微颤动',
@@ -80,7 +142,7 @@ describe('Classroom Component & Animation Registry', () => {
     expect(anim?.source).toBe('external')
     expect(anim?.duration).toBe(300)
 
-    const unreg = unregisterClassroomAnimation('quantumVibrate')
+    const unreg = await unregisterClassroomAnimation('quantumVibrate')
     expect(unreg).toBe(true)
     expect(getClassroomAnimation('quantumVibrate')).toBeUndefined()
   })
@@ -94,15 +156,15 @@ describe('Classroom Component & Animation Registry', () => {
     expect(expandClassroomComponents('<ui-formula latex="a^2+b^2=c^2" desc="勾股"></ui-formula>')).toContain('formula-box')
   })
 
-  it('prohibits overwriting builtin components or invalid tags', () => {
-    const badTag = registerClassroomComponent({
+  it('prohibits overwriting builtin components or invalid tags', async () => {
+    const badTag = await registerClassroomComponent({
       tag: 'invalid_tag',
       name: '错格式',
       description: '...',
     })
     expect(badTag.ok).toBe(false)
 
-    const overwriteBuiltin = registerClassroomComponent({
+    const overwriteBuiltin = await registerClassroomComponent({
       tag: 'ui-card',
       name: '覆盖卡片',
       description: '...',
@@ -157,7 +219,13 @@ describe('Classroom Component & Animation Registry', () => {
       tag: 'ui-algo-node',
       name: '算法拓扑节点',
       description: '表示图算法中的一个顶点',
-      template: '<div class="algo-node">{{title}}</div>',
+      source: `export default {
+  kind: 'classroom-component',
+  tag: 'ui-algo-node',
+  name: '算法拓扑节点',
+  description: '表示图算法中的一个顶点',
+  component: ({ props = {}, attrs = {} }) => <div className="algo-node">{props.title ?? attrs.title}</div>,
+}`,
     })
     expect(regRes.ok).toBe(true)
 
