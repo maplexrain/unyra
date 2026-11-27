@@ -373,7 +373,8 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   if (pathname === '/app.css') {
     const cssFile = await findAppCss()
     if (!cssFile) {
-      serve(res, 404, 'text/css', '/* 尚未构建客户端样式 */')
+      // 路由本身可用；开发/测试环境尚未构建客户端时也不应把样式请求打成 404。
+      serve(res, 200, 'text/css', '/* 尚未构建客户端样式 */')
       return
     }
     try {
