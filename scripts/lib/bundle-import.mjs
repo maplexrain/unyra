@@ -54,7 +54,22 @@ export function importBundled(code, { tag, file } = {}) {
     return import(pathToFileURL(file).href)
   }
   const withTag = tag ? code + '\n//' + tag : code
-  return import('data:text/javascript;base64,' + Buffer.from(withTag).toString('base64'))
+  const body = dataUrlRequireShim() + '\n' + withTag
+  return import('data:text/javascript;base64,' + Buffer.from(body).toString('base64'))
+}
+
+/**
+ * data URL 模块没有文件路径，Node 无法替它解析裸模块；同时 esbuild 打进 data URL
+ * 的 CJS 依赖里若出现 `require('util')` 这类动态 require，ESM 默认会直接抛
+ * 「Dynamic require is not supported」。这里把仓库根作为 require 基点挂到
+ * globalThis，让这类依赖按正常 Node 规则解析。
+ */
+function dataUrlRequireShim() {
+  const base = pathToFileURL(path.join(process.cwd(), 'package.json')).href
+  return [
+    'import { createRequire as __unyraCreateRequire } from "node:module";',
+    `globalThis.require = __unyraCreateRequire(${JSON.stringify(base)});`,
+  ].join('\n')
 }
 
 /** 打包并立刻 import：一次性跑完、不需要同一份 bundle 跑两遍的脚本走这条 */

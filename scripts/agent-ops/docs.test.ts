@@ -257,6 +257,8 @@ export async function apiNameTests() {
     'classroom.check': "{ target: 'classroom_probe' }",
     'classroom.registerComponent': "{ tag: 'ui-probe-card', name: '探针卡', description: '探针用组件', source: \"export default { kind: 'classroom-component', tag: 'ui-probe-card', component: () => <div>probe</div> }\" }",
     'classroom.registerAnimation': "{ verb: 'probeSpin', name: '探针动效', keyframes: { opacity: [0, 1] } }",
+    'classroom.registerSound': "{ name: 'probe-chime', label: '探针音效', description: '探针用音效' }",
+    'classroom.unregister': "{ kind: 'sound', id: 'probe-chime' }",
     // 内置浏览器：webview 元素在真实渲染层，探针给一份假的宿主（见下面 browser 桩）
     'browser.open': "'https://example.com'",
     'browser.tabs': '',
