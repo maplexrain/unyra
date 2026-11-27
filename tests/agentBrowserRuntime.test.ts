@@ -82,16 +82,16 @@ describe('AgentBrowserRuntime', () => {
     expect(runtime.get(sessionId)?.actions.at(-1)?.label).toBe('读取正文')
   })
 
-  it('viewport 只记录当前展示矩形；关闭会话会清掉 dock/viewport', async () => {
+  it('viewport 只记录当前展示矩形；关闭会话会清掉 展示页/viewport', async () => {
     const runtime = new AgentBrowserRuntime()
     const { sessionId } = await openWithFake(runtime, OWNER, 'https://example.com/a')
-    runtime.openDock(sessionId)
+    runtime.showSession(sessionId)
     runtime.setViewport(sessionId, { x: 12, y: 34, width: 480, height: 600 }, true)
     expect(runtime.getSnapshot().viewport).toMatchObject({ sessionId, visible: true, rect: { x: 12, y: 34 } })
 
     runtime.close(sessionId)
     expect(runtime.getSnapshot().sessions).toEqual([])
-    expect(runtime.getSnapshot().dockSessionId).toBeNull()
+    expect(runtime.getSnapshot().shownSessionId).toBeNull()
     expect(runtime.getSnapshot().viewport).toBeNull()
   })
 
@@ -103,13 +103,23 @@ describe('AgentBrowserRuntime', () => {
     expect(runtime.ownerForGuest(999)).toBeNull()
   })
 
-  it('收起 Dock 不关会话，并把用户接管交还给智能体', async () => {
+  it('关闭网页页不关会话，并把用户接管交还给智能体', async () => {
     const runtime = new AgentBrowserRuntime()
     const { sessionId } = await openWithFake(runtime, OWNER, 'https://example.com/a')
-    runtime.openDock(sessionId)
+    runtime.showSession(sessionId)
     runtime.setControl(sessionId, 'user')
-    runtime.closeDock()
-    expect(runtime.getSnapshot().dockSessionId).toBeNull()
+    runtime.hideSession()
+    expect(runtime.getSnapshot().shownSessionId).toBeNull()
     expect(runtime.get(sessionId)).toMatchObject({ control: 'agent' })
+  })
+
+  it('activeFor 取 owner 的活动会话，不受当前展示页影响', async () => {
+    const runtime = new AgentBrowserRuntime()
+    const first = await openWithFake(runtime, OWNER, 'https://example.com/a')
+    const second = await openWithFake(runtime, OWNER, 'https://example.com/b')
+    runtime.setActive(second.sessionId)
+    runtime.showSession(first.sessionId)
+    runtime.setActive(second.sessionId)
+    expect(runtime.activeFor(OWNER)).toMatchObject({ sessionId: second.sessionId, active: true })
   })
 })

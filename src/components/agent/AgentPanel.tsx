@@ -31,6 +31,9 @@ import { toolLabel } from './panel/toolLabel'
 import { useComposer } from './panel/useComposer'
 import { useMsgRail } from './panel/useMsgRail'
 import { useScrollFollow } from './panel/useScrollFollow'
+import { AgentViewTabs, type AgentPanelTab } from './panel/AgentViewTabs'
+import AgentBrowserPage from './panel/AgentBrowserPage'
+import { useAgentBrowserTab } from './panel/useAgentBrowserTab'
 import { setAgentViewMode, useAgentViewMode } from './agentViewMode'
 import { fadeMask, useScrollEdges } from '../../lib/scrollFade'
 import { t, useLocale } from '../../i18n'
@@ -236,6 +239,18 @@ export default function AgentPanel({
   const [bubblePreview, setBubblePreview] = useState<MessageImage | null>(null)
   /** role 视图分层：全局单例，切换 agent 不重置（见 agentViewMode） */
   const viewMode = useAgentViewMode()
+  /** 当前这段对话自己的后台浏览器；有会话才出现第三个「网页」页签 */
+  const browserTab = useAgentBrowserTab(conversation)
+  const browserPageOpen = browserTab.open && browserTab.sessions.length > 0
+  const activeTab: AgentPanelTab = browserPageOpen ? 'web' : viewMode
+  const selectTab = (tab: AgentPanelTab): void => {
+    if (tab === 'web') {
+      browserTab.setOpen(true)
+      return
+    }
+    browserTab.setOpen(false)
+    setAgentViewMode(tab)
+  }
   /** 右侧状态面板里高亮 / 定位的 work；WorkMenu 点选时写入，不等于展开某个窗口 */
   const [activeWorkId, setActiveWorkId] = useState<string | null>(null)
   /** 上下文压缩后的摘要展开着（消息列表里那块分界线上的「看摘要」） */
@@ -597,31 +612,21 @@ export default function AgentPanel({
   return (
     // relative：定位条贴着这一块的右边挂（它要的是整块面板的坐标，不是消息列的）
     <div ref={rootRef} className="relative flex h-full min-h-0 flex-col bg-card/45">
-      <div className="flex shrink-0 items-center gap-1 px-3 py-1.5">
-        {(['chat', 'mind'] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setAgentViewMode(m)}
-            className={
-              'rounded-lg px-2.5 py-1 text-[11.5px] transition ' +
-              (viewMode === m
-                ? 'bg-ink-strong text-paper'
-                : 'text-ink-faint hover:bg-line/50 hover:text-ink-strong')
-            }
-          >
-            {m === 'chat' ? t('对话') : t('思维')}
-          </button>
-        ))}
-        {/* work 的入口在输入区；消息已经按时间戳并入思维时间线，这里不再占一条壳 */}
-      </div>
+      <AgentViewTabs
+        active={activeTab}
+        browserCount={browserTab.sessions.length}
+        onSelect={selectTab}
+      />
+      {/* work 的入口在输入区；消息已经按时间戳并入思维时间线，这里不再占一条壳 */}
       {/*
         消息区不再限制整栏宽度：对话列表铺满可用空间，只有用户自己的单条气泡限制 450px；
         mind 的外部消息与 work 消息铺满整行。顶栏（超级导师 + 人格 + 「正在辅导」）随 agent
         栏页签化撤掉：页签自己就回答着「现在跟谁在说」。
       */}
-      <div className="flex min-h-0 w-full flex-1">
-        <div className="relative min-w-0 flex-1">
+      <div className="relative flex min-h-0 w-full flex-1 flex-col">
+        {browserPageOpen && <AgentBrowserPage scope={conversation} active={active} />}
+        <div className={browserPageOpen ? 'hidden' : 'flex min-h-0 w-full flex-1'}>
+          <div className="relative min-w-0 flex-1">
         {/* moji-selectable：聊天列表是全站仅有的两处「可选文字、可拖拽」的区域之一
             （另一处是左侧文档浏览区），见 index.css 的只读界面规则 */}
         {/*
@@ -709,13 +714,14 @@ export default function AgentPanel({
           />
         )}
       </div>
+      </div>
 
       {/* 输入区与列表之间不画分隔线：输入卡片自己那圈边框已经把它分出来了，多一条线只是噪音 */}
       {/*
         上内边距为 0：输入卡片与上面的消息列表之间只留卡片自己那圈边框，
         上面那一条 10px 的空白把「对话」与「我要说的话」切成了两段，而且它一直是空的。
       */}
-      <div className="w-full shrink-0 px-3.5 pb-3 pt-0">
+      <div className={(browserPageOpen ? 'hidden ' : '') + 'w-full shrink-0 px-3.5 pb-3 pt-0'}>
         {viewMode === 'chat' && (
           <ComposerUi
           composer={composer}

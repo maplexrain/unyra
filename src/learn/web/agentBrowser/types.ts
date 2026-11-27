@@ -2,7 +2,7 @@
  * Agent Browser 的类型契约。
  *
  * 这是「智能体自己管理的浏览器」而不是文档区网页页签：会话由 AgentBrowserRuntime
- * 持有，页面由全局 AgentBrowserHost 常驻承载，智能体页里的 Dock 只是视口。
+ * 持有，页面由全局 AgentBrowserHost 常驻承载，智能体页里的「网页」页只是视口。
  */
 
 export type AgentBrowserControl = 'agent' | 'user' | 'paused'
@@ -20,7 +20,7 @@ export interface AgentBrowserOwner {
   goalId?: string | null
   /** 角色 id（tutor / researcher / designer ...） */
   role?: string
-  /** 角色显示名，Dock 直接展示，不必再查设置 */
+  /** 角色显示名，网页页直接展示，不必再查设置 */
   roleName?: string
   /** 当前 role 会话 id；同一 role 跨 work 共享浏览器 */
   conversationId?: string | null
@@ -69,8 +69,8 @@ export interface AgentBrowserViewport {
 
 export interface AgentBrowserSnapshot {
   sessions: AgentBrowserSessionInfo[]
-  /** Dock 当前展开的会话；空表示收起 */
-  dockSessionId: string | null
+  /** 当前在「网页」页里展示的会话；空表示页面未打开 */
+  shownSessionId: string | null
   viewport: AgentBrowserViewport | null
   version: number
 }

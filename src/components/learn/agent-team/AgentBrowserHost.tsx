@@ -2,7 +2,7 @@
  * 全局智能体浏览器宿主。
  *
  * 它常驻在 App 根部，不随智能体页签关闭而卸载；每个 session 一枚 webview。
- * Dock 只把「当前要展示哪一枚、展示在屏幕哪个矩形」写入 runtime，这里按矩形定位。
+ * 智能体面板的「网页」页只把「当前要展示哪一枚、展示在屏幕哪个矩形」写入 runtime，这里按矩形定位。
  * 收起时只是移出屏幕/隐藏，guest 继续在后台运行。
  */
 import { agentBrowserRuntime, useAgentBrowserSnapshot } from '../../../learn/web/agentBrowser'

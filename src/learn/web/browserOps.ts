@@ -61,7 +61,7 @@ function hostOf(url: string): string {
   }
 }
 
-/** 把 runtime 脚本入口映射成人在 Dock 里看得懂的动作名；不把 fill/type 的内容写进状态。 */
+/** 把 runtime 脚本入口映射成人在「网页」页里看得懂的动作名；不把 fill/type 的内容写进状态。 */
 function labelOfScript(fnCall: string): string {
   if (fnCall.includes('__agentIndex(')) return '读取页面结构'
   if (fnCall.includes('__agentText(')) return '读取正文'

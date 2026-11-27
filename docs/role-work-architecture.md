@@ -108,13 +108,14 @@ api.compact({ summary, tasks? })
 `api.browser.*` 现在管理的是**智能体自己的后台会话**，不再等同于文档区的用户网页页签：
 
 - `open` 生成 `b:` 会话，不创建 `TabRef`、不激活文档页签，也不占页签栏。
-- 会话常驻在 App 根部的 `AgentBrowserHost`，每个 session 一枚 `<webview>`；收起、切文档、
-  切目标甚至关掉智能体页签后，guest 仍在后台运行。
-- 智能体页内的 `AgentBrowserDock` 只是视口与状态面板：显示真实页面、当前动作、耗时、
-  控制者；关闭 Dock 只隐藏视口，不销毁会话。
-- 控制权分为 `agent / user / paused`。用户点“接管”后，agent 在下一个动作边界等待；
-  “交还”后继续。用户直接点页面也会触发接管，避免和 agent 抢操作。
-- `browser.tabs()` 只列当前 agent 自己的会话；`activate` 只换活动会话，不弹 Dock；
+- 会话常驻在 App 根部的 `AgentBrowserHost`，每个 session 一枚 `<webview>`；切对话、切目标
+  甚至关掉智能体页签后，guest 仍在后台运行。
+- 智能体面板顶部把「网页」做成与「对话 / 思维」并列的第三个视图，只有当前对话存在
+  浏览器会话时入口才出现；页面占满中央工作区，显示真实页面、当前动作、控制者。
+  切换回对话/思维只清空视口，不销毁会话。
+- 控制权分为 `agent / user / paused`。用户点“接管”或直接点页面后，agent 在下一个动作边界等待；
+  “交还”后继续。
+- `browser.tabs()` 只列当前 agent 自己的会话；`activate` 只换活动会话，不切换「网页」页；
   `close` 只关闭自己的会话，绝不关用户网页页签。
 - 智能体会话里的 `target=_blank` 会回流成同 owner 的新会话，不落成文档区页签。
 - 会话按 `goalId + role + conversationId` 归属；每 owner 最多 2 个、全局最多 4 个，
@@ -127,7 +128,7 @@ api.compact({ summary, tasks? })
 | `src/learn/web/agentBrowser/runtime.ts` | 会话池、控制权、动作状态、viewport、guest 归属 |
 | `src/learn/web/browserOps.ts` | `browser.*` 的会话模式与旧 docArea 兼容路径 |
 | `src/components/learn/agent-team/AgentBrowserHost.tsx` | App 根部常驻的 webview 宿主 |
-| `src/components/learn/agent-team/AgentBrowserDock.tsx` | 智能体页内的状态条 / Dock / 接管控制 |
+| `src/components/agent/panel/AgentBrowserPage.tsx` | 智能体面板的第三个「网页」页 / 视口 / 接管控制 |
 
 ## 相关路径
 

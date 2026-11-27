@@ -291,7 +291,7 @@ export default function App({ boot }: Props) {
         onOpenNotice={() => setNoticeOpen(true)}
         onOpenLan={() => setLanOpen(true)}
       />
-      {/* 智能体后台浏览器的常驻宿主：Dock 在智能体页，webview 不随页签关闭而销毁 */}
+      {/* 智能体后台浏览器的常驻宿主：网页页在智能体面板里，webview 不随页签关闭而销毁 */}
       <AgentBrowserHost />
       {/* 群消息里 agent @用户：全局顶部推送，点击跳对应目标的智能体群聊 */}
       <GroupMentionPushHost

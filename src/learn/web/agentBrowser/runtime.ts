@@ -3,7 +3,7 @@
  *
  * 关键约束：
  * - 不碰 docArea / TabRef：agent 浏览器永远不生成网页页签，也不激活页面。
- * - 会话运行在全局 host 里，Dock 只负责把它的视口定位到智能体页。
+ * - 会话运行在全局 host 里，智能体页的「网页」页只负责把它的视口定位到屏幕。
  * - agent 只能操作自己 owner 的会话；用户网页页签由原来的 docArea 路径继续管理。
  */
 import type {
@@ -109,10 +109,10 @@ export class AgentBrowserRuntime {
   private readonly activeByOwner = new Map<string, string>()
   private readonly guestSessions = new Map<number, string>()
   private readonly listeners = new Set<() => void>()
-  private dockSessionId: string | null = null
+  private shownSessionId: string | null = null
   private viewport: AgentBrowserViewport | null = null
   private version = 0
-  private snapshot: AgentBrowserSnapshot = { sessions: [], dockSessionId: null, viewport: null, version: 0 }
+  private snapshot: AgentBrowserSnapshot = { sessions: [], shownSessionId: null, viewport: null, version: 0 }
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener)
@@ -127,7 +127,7 @@ export class AgentBrowserRuntime {
       sessions: [...this.sessions.values()].map((s) =>
         publicSession(s, this.activeByOwner.get(s.ownerKey) ?? null),
       ),
-      dockSessionId: this.dockSessionId,
+      shownSessionId: this.shownSessionId,
       viewport: this.viewport,
       version: this.version,
     }
@@ -257,7 +257,7 @@ export class AgentBrowserRuntime {
     const activeId = this.activeByOwner.get(key)
     if (activeId) {
       const s = this.sessions.get(activeId)
-      if (s && !s.closed) return publicSession(s, this.dockSessionId)
+      if (s && !s.closed) return publicSession(s, activeId)
     }
     const first = this.list(owner)[0]
     return first ?? null
@@ -270,27 +270,27 @@ export class AgentBrowserRuntime {
     this.emit()
   }
 
-  openDock(sessionId: string): void {
+  showSession(sessionId: string): void {
     const s = this.requireSession(sessionId)
-    const prev = this.dockSessionId ? this.sessions.get(this.dockSessionId) : null
+    const prev = this.shownSessionId ? this.sessions.get(this.shownSessionId) : null
     // 用户从 A 切到 B：A 的接管状态不能把 A 的智能体永久卡住
     if (prev && prev.sessionId !== sessionId && prev.control === 'user') {
       this.setControl(prev.sessionId, 'agent')
     }
     if (this.viewport && this.viewport.sessionId !== sessionId) this.viewport = null
-    this.dockSessionId = sessionId
+    this.shownSessionId = sessionId
     this.activeByOwner.set(s.ownerKey, sessionId)
     s.lastActiveAt = Date.now()
     this.emit()
   }
 
-  closeDock(): void {
-    if (this.dockSessionId === null && this.viewport === null) return
-    const docked = this.dockSessionId ? this.sessions.get(this.dockSessionId) : null
-    // 收起 Dock = 用户不再直接操作；接管权交还给智能体，避免 work 永久卡在等待
-    if (docked && docked.control === 'user') this.setControl(docked.sessionId, 'agent')
-    if (this.viewport && this.viewport.sessionId === this.dockSessionId) this.viewport = null
-    this.dockSessionId = null
+  hideSession(): void {
+    if (this.shownSessionId === null && this.viewport === null) return
+    const shown = this.shownSessionId ? this.sessions.get(this.shownSessionId) : null
+    // 关掉「网页」页 = 用户不再直接操作；接管权交还给智能体，避免 work 永久卡在等待
+    if (shown && shown.control === 'user') this.setControl(shown.sessionId, 'agent')
+    if (this.viewport && this.viewport.sessionId === this.shownSessionId) this.viewport = null
+    this.shownSessionId = null
     this.emit()
   }
 
@@ -312,7 +312,7 @@ export class AgentBrowserRuntime {
       s.controlWaiters = []
       this.sessions.delete(id)
       if (this.activeByOwner.get(s.ownerKey) === id) this.activeByOwner.delete(s.ownerKey)
-      if (this.dockSessionId === id) this.dockSessionId = null
+      if (this.shownSessionId === id) this.shownSessionId = null
       if (this.viewport?.sessionId === id) this.viewport = null
     }
     this.emit()

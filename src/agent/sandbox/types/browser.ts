@@ -305,7 +305,7 @@ export interface BrowserOps {
   open(url: string): Promise<{ tabId: string; sessionId?: string; url: string; note?: string }>
   /** 存活会话（信封 { tabs }——同组接口一致，别回裸数组） */
   tabs(): { tabs: BrowserTabInfo[] }
-  /** 把某个会话设为该 agent 的活动会话；不弹出 Dock，也不切文档页签 */
+  /** 把某个会话设为该 agent 的活动会话；不切换「网页」页，也不切文档页签 */
   activate(tabId: string): { ok: true }
   /** 关掉自己的智能体会话（不弹确认）；给数组就批量关；绝不关闭用户网页页签 */
   close(tabId: string | string[]): { ok: true }
