@@ -51,4 +51,62 @@ describe('role chat.send URL 图片附件', () => {
       expect(result.images?.[0]?.mime).toBe('image/jpeg')
     }
   })
+
+  it('moji:static/<uuid> 按资源清单落回真实路径，不再写裸 uuid', async () => {
+    const store = {
+      version: 2,
+      goals: [{ id: 'g1', rootNodeId: 'n1', question: '高数', createdAt: 1, updatedAt: 1 }],
+      nodes: [
+        {
+          id: 'n1',
+          title: '高数',
+          key: '高数',
+          description: '',
+          docs: { teaching: '' },
+          notes: [],
+          annotations: [],
+          status: 'learning',
+          origin: 'ai',
+          goalId: 'g1',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      edges: [],
+      resources: {
+        g1: [
+          {
+            uuid: 'img-1',
+            name: '人民网截图',
+            ext: 'webp',
+            type: 'binary',
+            description: '',
+            createdAt: 1,
+            updatedAt: 1,
+            bytes: 639694,
+            hash: '',
+          },
+        ],
+      },
+    } as unknown as LearnStore
+    const result = await resolveChatAttachments(
+      [{ image: 'moji:static/img-1' }],
+      { getLatest: () => store, set: () => {}, goalId: 'g1' },
+    )
+    expect('error' in result).toBe(false)
+    if (!('error' in result)) {
+      expect(result.images?.[0]).toMatchObject({
+        id: 'img-1',
+        rel: 'docs/高数/static/img-1.webp',
+        name: '人民网截图',
+        mime: 'image/webp',
+        bytes: 639694,
+      })
+    }
+  })
+
+  it('moji:static 引用找不到资源时显式报错，不落永远读不到的空引用', async () => {
+    const result = await resolveChatAttachments([{ image: 'moji:static/missing' }], io)
+    expect(result).toEqual({ error: expect.stringContaining('不在资源库里') })
+  })
 })

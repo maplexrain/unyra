@@ -10,6 +10,8 @@ import type { MessageFile, MessageImage, PendingImage } from '../../agent/types'
 import { transferFreePendingImages, transferPendingImages } from '../agent/transfer'
 import type { LearnStore } from '../types'
 import type { ChatAttachmentInput } from '../../agent/roleWork/types'
+import { resolveStaticResource } from '../static/resolveRef'
+import { mimeOfExt } from '../static'
 
 const IMAGE_EXT = /\.(png|jpg|jpeg|webp|gif|bmp|avif)$/i
 
@@ -28,12 +30,7 @@ function relOf(item: ChatAttachmentInput): string | null {
 
 function mimeOfName(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
-  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
-  if (ext === 'webp') return 'image/webp'
-  if (ext === 'gif') return 'image/gif'
-  if (ext === 'bmp') return 'image/bmp'
-  if (ext === 'avif') return 'image/avif'
-  return 'image/png'
+  return mimeOfExt(ext)
 }
 
 export async function resolveChatAttachments(
@@ -87,6 +84,24 @@ export async function resolveChatAttachments(
         images.push(...saved.images)
       } catch (err) {
         return { error: '附件下载失败：' + (err instanceof Error ? err.message : raw) }
+      }
+      continue
+    }
+
+    if (raw.startsWith('moji:static/')) {
+      const found = resolveStaticResource(io.getLatest(), raw, io.goalId)
+      if (!found) return { error: 'chat.send 引用的静态资源不在资源库里：' + raw }
+      const res = found.resource
+      if (isImage) {
+        images.push({
+          id: res.uuid,
+          rel: found.rel,
+          name: item.name?.trim() || res.name,
+          mime: item.mime ?? mimeOfExt(res.ext),
+          bytes: item.bytes ?? res.bytes,
+        })
+      } else {
+        files.push({ name: item.name?.trim() || res.name, bytes: item.bytes ?? res.bytes, uuid: res.uuid, rel: found.rel })
       }
       continue
     }

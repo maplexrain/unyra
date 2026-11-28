@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extOfPath, formatSourceText, isSourceFormattable } from '../src/lib/formatSource'
+import { extOfPath, formatSourceOnSave, formatSourceText, isSourceFormattable } from '../src/lib/formatSource'
 
 describe('源码格式化', () => {
   it('按 .tsx 后缀选择 TypeScript 解析器', async () => {
@@ -42,5 +42,20 @@ describe('源码格式化', () => {
     const result = await formatSourceText('plain text', '.txt')
     expect(result.ok).toBe(false)
     expect(result.error).toContain('暂不支持')
+  })
+
+  it('保存钩子：源码自动格式化；Markdown 与不支持的类型原样返回', async () => {
+    const raw = 'const  a={x:1,y:2}'
+    const saved = await formatSourceOnSave(raw, 'E:/tmp/demo.ts')
+    expect(saved).toContain('const a = { x: 1, y: 2 }')
+
+    const md = '# 标题\n\n\n正文'
+    expect(await formatSourceOnSave(md, 'notes.md')).toBe(md)
+    expect(await formatSourceOnSave('plain text', 'notes.txt')).toBe('plain text')
+  })
+
+  it('保存钩子遇到语法错误时回退原文，不把保存挡下来', async () => {
+    const broken = 'const a = {'
+    expect(await formatSourceOnSave(broken, 'broken.ts')).toBe(broken)
   })
 })

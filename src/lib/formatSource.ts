@@ -170,3 +170,19 @@ export async function formatSourceText(text: string, extOrPath?: string): Promis
     }
   }
 }
+
+/** 保存时自动格式化的类型：源码 / 结构化文件；Markdown 正文重排会改变作者排版，不碰。 */
+const AUTO_FORMAT_SKIP = new Set(['.md', '.markdown', '.mdx'])
+
+/**
+ * 保存钩子用的「能格式就格式，格式不了就原样」。
+ *
+ * 与编辑器里的手动格式化不同：保存是数据安全路径，Prettier 首次加载、语法错误、
+ * 不支持的插件都不能把用户的保存挡下来——失败时一字不改，交给调用方照原稿写盘。
+ */
+export async function formatSourceOnSave(text: string, pathOrLabel: string): Promise<string> {
+  const ext = extOfPath(pathOrLabel)
+  if (!ext || AUTO_FORMAT_SKIP.has(ext) || !isSourceFormattable(ext)) return text
+  const result = await formatSourceText(text, ext)
+  return result.ok && result.text !== undefined ? result.text : text
+}

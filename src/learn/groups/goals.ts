@@ -150,6 +150,26 @@ export function tabsOf(owners: TabOwners | undefined, goalId: string): string[] 
 }
 
 /**
+ * 这枚页签此刻在栏上是否属于「当前目标 + 公共」这一套。
+ *
+ * **入参必须是 `reconcileOwners` 补全后的表**（渲染层就是这么拿的）。补全之后每枚
+ * 页签都有归属：没登记的页签按 `refOwner` 归到它真正的目标，别的目标的会被栏藏起来。
+ * 所以这里遇到「表里查不到」不能退回「看得见」——那正是「关掉当前页签，落点却
+ * 落到一枚栏上看不见的页签，正文当场换成它」的来源。没有归属表（旧存档）时整张表
+ * 都不存在，此时才退回「全部可见」，与 visibleTabs 的 `if (!owners)` 对齐。
+ */
+export function isTabVisibleForGoal(
+  owners: TabOwners | undefined,
+  tabId: string,
+  goalId: string | null,
+): boolean {
+  if (!owners) return true
+  const gid = goalId ?? PUBLIC_OWNER
+  const owner = ownerOfTab(owners, tabId)
+  return owner === gid || owner === PUBLIC_OWNER
+}
+
+/**
  * 把一枚页签登记到某个目标名下（已登记在别处则先摘掉——一个页签只属于一个目标）。
  *
  * 顺序语义：新登记的**排在末尾**。新打开的页签永远在末尾，保持与打开时间一致。

@@ -41,7 +41,9 @@ import { normalizeProjects } from '../../projects'
 import { normalizeFileNodes } from '../../fileNodes'
 import { normalizeClassrooms } from '../../classroom/store'
 import { normalizeMemoryStore } from '../../memory'
-import { normalizeResourceList, retargetStaticRefs, type StaticResource } from '../../static'
+import { normalizeResourceList, retargetStaticRefs, mimeOfExt, type StaticResource } from '../../static'
+import { resolveStaticResource } from '../../static/resolveRef'
+import { rewriteConversationImages } from './conversation'
 import { normalizeTmpStore, pruneTmpToNodes } from '../../../lib/tmpStore'
 import { normalizeNode } from './node'
 import { normalizeConversation } from './conversation'
@@ -255,6 +257,25 @@ export function normalizeLearnStore(data: unknown): LearnStore | null {
       if (!goalIds.has(goalId)) continue
       const items = normalizeResourceList(list)
       if (items.length) resources[goalId] = items
+    }
+
+    /*
+      图片引用的自愈：chat.send 曾把 `moji:static/<uuid>` 直接当 rel 落进消息，
+      当轮有缓存还能显示，重启后必然读不到；目标改过名时老消息里的 rel 也会指向旧目录。
+      载入时按刚读出来的资源清单改写一次，旧记录与新记录一起走同一条真实路径。
+    */
+    const resourceStore = { goals, nodes: fixedNodes, edges, resources } as LearnStore
+    for (let i = 0; i < conversations.length; i += 1) {
+      const conv = conversations[i]
+      conversations[i] = rewriteConversationImages(conv, (img) => {
+        const found = resolveStaticResource(resourceStore, img.id, conv.goalId)
+        if (!found) return img
+        const mime = mimeOfExt(found.resource.ext)
+        const name = img.name && img.name !== img.id ? img.name : found.resource.name
+        const bytes = img.bytes || found.resource.bytes
+        if (img.rel === found.rel && img.mime === mime && img.name === name && img.bytes === bytes) return img
+        return { ...img, id: found.resource.uuid, rel: found.rel, name, mime, bytes }
+      })
     }
 
     /*

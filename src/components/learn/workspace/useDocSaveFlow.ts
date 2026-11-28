@@ -23,6 +23,7 @@ import {
 } from 'react'
 import { notesOf, type LearnStore, type LearnTab, type TabRef } from '../../../learn/types'
 import { draftOf, dropDraft, dropDrafts, putDraft, stageDraft } from '../../../learn/drafts'
+import { formatSourceOnSave } from '../../../lib/formatSource'
 import {
   closeTabs,
   draftFileName,
@@ -34,7 +35,6 @@ import {
   type TabCloseMode,
 } from '../../../learn/tabs'
 import {
-  PUBLIC_OWNER,
   activateIn,
   allTabs,
   closeIn,
@@ -45,8 +45,9 @@ import {
   focusedTab,
   groupOf,
   isAnchorOutline,
-  ownerOfTab,
+  isTabVisibleForGoal,
   pruneStaleSidePortals,
+  reconcileOwners,
   renameTabRef,
   servesGoal,
   unloadAnchoredGroups,
@@ -257,13 +258,15 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
        * 落点只在「栏上看得见」的页签里挑，判据与页签栏同一套（见 groups/goals 的 visibleTabs）：
        * 页签实体全住在格子里、栏上只画「公共 + 当前目标」，物理顺序里因此躺着别的目标
        * 藏起来的页签——照物理顺序落，会落到一枚栏上没有的页签上。
+       *
+       * 归属表必须先按同一套 `reconcileOwners` 补全：渲染层拿到的是补全后的表，
+       * 落点若读存档里的原表，没登记的页签在这里会被当成「看得见」，在栏上却按
+       * `refOwner` 归到别的目标藏起来——「关掉当前页签，正文却换成另一组里早已
+       * 关掉的那一份」正是这条口径差出来的。
        */
-      const owners = s.docArea.tabOwners
-      const gid = s.activeGoalId ?? PUBLIC_OWNER
-      const preferVisible = (tab: LearnTab): boolean => {
-        const known = ownerOfTab(owners, tab.id)
-        return known === null || known === gid || known === PUBLIC_OWNER
-      }
+      const owners = reconcileOwners(s.docArea.tabOwners, beforeTabs, goalOfNode, s.activeGoalId)
+      const preferVisible = (tab: LearnTab): boolean =>
+        isTabVisibleForGoal(owners, tab.id, s.activeGoalId)
       const docArea0 = closeIn(s.docArea, group, id, mode, closingIds, preferVisible)
       /*
        * 组锚卸载（见 groups/tabs 的 unloadAnchoredGroups）：这一批里被关掉的若是
@@ -526,6 +529,14 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
           return { ok: false, error: t('没有拿到保存路径') }
         }
         /*
+         * 新建文件在这一步才第一次知道后缀。先按上面已经落盘的原稿探一次格式，
+         * 变了就再写一遍——不然用户看到的是「保存时自动格式化」，新文件却是原文。
+         * 格式化失败不改写：原稿已经安全在盘上，不能为了排版把保存搞成失败。
+         */
+        let finalText = text
+        const formatted = await formatSourceOnSave(text, path)
+        if (formatted !== text && !(await writeLocalFile(path, formatted))) finalText = formatted
+        /*
          * 文件已经落盘（主进程写的）。回读一次确认这个后缀归一打得开：
          * local 通道只放行文本类后缀（见 electron/storage/local 的白名单），
          * 用户手打一个别的后缀时，留一枚读不出内容的页签比说清楚更糟。
@@ -552,7 +563,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
           // 新建的文件就是一份外部文件：进「本地文件」清单，之后还能从那儿再打开它
           localFiles: addLocalFile(s.localFiles, path, Date.now()),
         })
-        setLocalSaved({ path, text })
+        setLocalSaved({ path, text: finalText })
         setDocSaveError(undefined)
         // 手动保存的意思就是「现在就写下去」：立刻落盘，不等 500ms 防抖
         await flush()
@@ -575,10 +586,11 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
           return { ok: false, error: t('「{0}」已经不在了，没能保存', title) }
         }
         if (diskPath) markSelfWritingPath(diskPath)
+        const savedText = await formatSourceOnSave(text, diskPath)
         const err =
           ref.kind === 'local'
-            ? await writeLocalFile(diskPath, text)
-            : (await writeUserText(rel as string, text))
+            ? await writeLocalFile(diskPath, savedText)
+            : (await writeUserText(rel as string, savedText))
               ? null
               : t('写入失败')
         if (err) {
@@ -587,7 +599,7 @@ export function useDocSaveFlow(deps: DocSaveFlowDeps) {
           return { ok: false, error: t('保存「{0}」失败：{1}', title, err) }
         }
         setDocSaveError(undefined)
-        setLocalSaved({ path: diskPath, text })
+        setLocalSaved({ path: diskPath, text: savedText })
         // 存成了，外部改动已被这一版盖过：冲突标记撤掉
         setRawConflicts((m) => {
           if (!m[diskPath]) return m

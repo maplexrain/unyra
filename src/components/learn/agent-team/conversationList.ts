@@ -46,7 +46,7 @@ export function sortConversationsByTimeDesc(list: readonly Conversation[]): Conv
  * HTML 注释与其余标签 → 常用实体 → 空白折叠。
  * 标签剥离只认「`<` 后紧跟字母」的形状：`a < b > c` 这类比较文本不受影响。
  */
-function plainPreview(text: string): string {
+export function plainPreview(text: string): string {
   let s = text
   // 围栏代码块：按 ``` 切段，奇数段都是代码（未闭合的尾巴也算代码）
   s = s

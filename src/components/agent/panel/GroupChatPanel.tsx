@@ -46,6 +46,7 @@ import { useRecentWindow } from './useRecentWindow'
 import { useChatReadIndex } from './messageReadIndex'
 import { useScrollFollow } from './useScrollFollow'
 import { mentionedAgentsOf } from './groupMentions'
+import { agentMatchesMentionQuery, isMentionAcceptKey } from './agentMentionMatch'
 import { WorkingAgentStack } from './WorkingAgentStack'
 import { GroupTriageFallbackDialog } from './GroupTriageFallbackDialog'
 import { GroupChatTitle } from './GroupChatTitle'
@@ -355,7 +356,7 @@ export function GroupChatPanel({
   const pickerOpen = (Boolean(mention) || forcePicker) && !suppressPicker
   const mentionQuery = mention?.query.trim().toLowerCase() ?? ''
   const filteredAgents = useMemo(
-    () => agents.filter((a) => !mentionQuery || a.name.toLowerCase().includes(mentionQuery) || (a.aliases ?? []).some((x) => x.toLowerCase().includes(mentionQuery))),
+    () => agents.filter((a) => agentMatchesMentionQuery(a, mentionQuery)),
     [agents, mentionQuery],
   )
   const pickIndex = Math.min(activePick, Math.max(0, filteredAgents.length - 1))
@@ -378,7 +379,8 @@ export function GroupChatPanel({
       while (tokenEnd < text.length && !/\s/.test(text[tokenEnd])) tokenEnd += 1
       const before = text.slice(0, m.start)
       const after = text.slice(tokenEnd)
-      next = before + token + after.replace(/^\s*/, ' ')
+      // token 本身已经带一个分隔空格，尾部不能再补一个；去掉 after 开头原有的空白即可。
+      next = before + token + after.replace(/^\s+/, '')
       nextCaret = before.length + token.length
     } else {
       const trimmedEnd = text.replace(/\s+$/, '')
@@ -901,7 +903,8 @@ export function GroupChatPanel({
                     setActivePick((i) => Math.max(0, i - 1))
                     return
                   }
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  // Enter / Tab 都采用当前高亮候选；Shift+Tab 留给焦点前后移动，不吞掉。
+                  if (isMentionAcceptKey(e)) {
                     e.preventDefault()
                     insertMention(filteredAgents[pickIndex])
                     return

@@ -319,6 +319,58 @@ describe('对话写盘 → 读回', () => {
     expect(back.messages[0].images).toBeUndefined()
     expect(back.messages[1].mark).toBeUndefined()
   })
+
+  it('moji:static 裸 uuid 读回来后按资源清单补成真实路径（否则重启后永远读不到）', () => {
+    const store = storeWith(
+      {
+        ...convWith([
+          {
+            ...msg('u1', 'user', '看这张截图'),
+            images: [{ id: 'img-1', rel: 'img-1', name: 'img-1', mime: 'image/png', bytes: 0 }],
+          },
+        ]),
+        channels: [
+          {
+            id: 'g-1',
+            kind: 'user',
+            direction: 'out',
+            from: { kind: 'role', id: 'researcher' },
+            to: { kind: 'user', id: 'u1' },
+            text: '截图',
+            ts: now,
+            attachments: {
+              images: [{ id: 'img-1', rel: 'img-1', name: 'img-1', mime: 'image/png', bytes: 0 }],
+            },
+          },
+        ],
+      } as Conversation,
+    )
+    store.resources = {
+      g1: [
+        {
+          uuid: 'img-1',
+          name: '人民网截图',
+          ext: 'webp',
+          type: 'binary',
+          description: '',
+          createdAt: now,
+          updatedAt: now,
+          bytes: 639694,
+          hash: '',
+        },
+      ],
+    }
+    const back = (parseDocs(buildDocs(store), buildState(store))?.conversations ?? [])[0] as Conversation
+    const expected = 'docs/导数/static/img-1.webp'
+    expect(back.messages[0].images?.[0]).toMatchObject({
+      id: 'img-1',
+      rel: expected,
+      name: '人民网截图',
+      mime: 'image/webp',
+      bytes: 639694,
+    })
+    expect(back.channels?.[0].attachments?.images?.[0]).toMatchObject({ rel: expected })
+  })
 })
 
 describe('在途轮次：增量落库的形状与中断恢复（见 learn/agent/inflight）', () => {

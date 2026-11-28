@@ -197,6 +197,15 @@ describe('关闭页签', () => {
     expect(r.active).toBe(ids[1])
   })
 
+  it('落点只认可见页签：整格都藏起来时补空白，不激活原本看不见的页签', () => {
+    const two = [tab(teach('a')), tab(teach('b'))]
+    const r = closeTabs(two, tabKey(teach('a')), 'self', tabKey(teach('a')), undefined, (t) => t.id !== tabKey(teach('b')))
+    expect(r.active).not.toBe(tabKey(teach('b')))
+    expect(r.tabs.some((t) => t.id === r.active && t.ref.kind === 'blank')).toBe(true)
+    // 藏着的页签本体没有被删：切到它所属目标时还在
+    expect(r.tabs.map((t) => t.id)).toContain(tabKey(teach('b')))
+  })
+
   it('关别人不该把我正在看的这个换掉', () => {
     const r = closeTabs(tabs, ids[0], 'self', ids[2])
     expect(r.active).toBe(ids[2])

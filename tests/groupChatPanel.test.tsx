@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 import { GroupChatPanel, mentionContextAt } from '../src/components/agent/panel/GroupChatPanel'
 import { mentionedAgentsOf } from '../src/components/agent/panel/groupMentions'
+import { agentMatchesMentionQuery } from '../src/components/agent/panel/agentMentionMatch'
 import { groupThreadIdOf } from '../src/learn/groupChat'
 import type { ChannelMessage } from '../src/agent/types'
 
@@ -184,6 +185,45 @@ describe('GroupChatPanel', () => {
     expect(host.textContent).toContain('@经理龟 收到，已开工')
     expect(host.textContent).toContain('group:g1>m1')
 
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
+  it('@ 候选支持拼音全拼、首字母与别名匹配', () => {
+    const tutor = { id: 'tutor' as const, name: '导师龟', aliases: ['导师'] }
+    const dispatcher = { id: 'dispatcher' as const, name: '经理龟', aliases: ['经理'] }
+    expect(agentMatchesMentionQuery(tutor, 'daoshi')).toBe(true)
+    expect(agentMatchesMentionQuery(tutor, 'dsg')).toBe(true)
+    expect(agentMatchesMentionQuery(dispatcher, 'jingli')).toBe(true)
+    expect(agentMatchesMentionQuery(dispatcher, 'jlg')).toBe(true)
+    expect(agentMatchesMentionQuery(dispatcher, '导师')).toBe(false)
+    expect(agentMatchesMentionQuery(dispatcher, '')).toBe(true)
+  })
+
+  it('按 @ 拼音过滤后，Tab 采用当前高亮的候选', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(createElement(GroupChatPanel, { messages: [], agents, onSend: vi.fn(() => true) }))
+    })
+    const textarea = host.querySelector('textarea')
+    expect(textarea).not.toBeNull()
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+    expect(setter).toBeTruthy()
+    act(() => {
+      setter!.call(textarea, '@dsg')
+      textarea!.dispatchEvent(new Event('input', { bubbles: true }))
+      textarea!.setSelectionRange(4, 4)
+      textarea!.dispatchEvent(new Event('select', { bubbles: true }))
+    })
+    expect(host.textContent).toContain('导师龟')
+    act(() => {
+      textarea!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
+    })
+    expect(textarea!.value).toBe('@导师龟 ')
     act(() => {
       root.unmount()
     })

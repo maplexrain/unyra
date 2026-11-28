@@ -345,3 +345,80 @@ export function normalizeConversation(
   const recovered = recoverInterruptedTurn(conv)
   return recovered.summary?.pending ? applyCompaction(recovered).conv : recovered
 }
+
+/**
+ * 把一段会话里所有图片引用过一遍改写器（消息、工具附图、通道附件、work 消息）。
+ *
+ * 存在的理由：`chat.send` 曾把 `moji:static/<uuid>` 直接当成 rel 写进消息，
+ * 当轮靠内存缓存还能显示，重启后缓存一空，`readUserImage('<uuid>')` 必然读不到。
+ * 载入时按资源清单把裸 uuid / 过期目标目录改回真实路径，旧消息也能自愈。
+ *
+ * 改写器返回原对象就整条原样返回；只要有一张图变了才复制所在的消息，避免整段重排。
+ */
+export function rewriteConversationImages(
+  conv: Conversation,
+  rewrite: (image: MessageImage) => MessageImage,
+): Conversation {
+  let changed = false
+  const mapImages = (images: MessageImage[] | undefined): MessageImage[] | undefined => {
+    if (!images?.length) return images
+    let touched = false
+    const next = images.map((img) => {
+      const out = rewrite(img)
+      if (out !== img) touched = true
+      return out
+    })
+    if (!touched) return images
+    changed = true
+    return next
+  }
+  const mapParts = (parts: AgentPart[]): AgentPart[] => {
+    let touched = false
+    const next = parts.map((p) => {
+      if (p.type !== 'tool' || !p.images?.length) return p
+      const images = mapImages(p.images)
+      if (images === p.images) return p
+      touched = true
+      return { ...p, images }
+    })
+    return touched ? next : parts
+  }
+  const mapMessages = (messages: ConversationMessage[]): ConversationMessage[] => {
+    let touched = false
+    const next = messages.map((m) => {
+      const images = mapImages(m.images)
+      const parts = mapParts(m.parts)
+      if (images === m.images && parts === m.parts) return m
+      touched = true
+      return { ...m, ...(images ? { images } : {}), parts }
+    })
+    return touched ? next : messages
+  }
+
+  const messages = mapMessages(conv.messages)
+  let channels = conv.channels
+  if (channels?.length) {
+    let touched = false
+    const next = channels.map((c) => {
+      const images = mapImages(c.attachments?.images)
+      if (images === c.attachments?.images) return c
+      touched = true
+      return { ...c, attachments: { ...c.attachments, images } }
+    })
+    if (touched) channels = next
+  }
+  let works = conv.works
+  if (works?.sessions.length) {
+    let touched = false
+    const next = works.sessions.map((w) => {
+      const messages = mapMessages(w.messages)
+      if (messages === w.messages) return w
+      touched = true
+      return { ...w, messages }
+    })
+    if (touched) works = { ...works, sessions: next }
+  }
+
+  if (!changed) return conv
+  return { ...conv, messages, ...(channels ? { channels } : {}), ...(works ? { works } : {}) }
+}
