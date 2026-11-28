@@ -27,6 +27,7 @@ import {
   dropTab,
   dropTabs,
   focusTabsInGroup,
+  isTabVisibleForGoal,
   ownerOfTab,
   reconcileOwners,
   refOwner,
@@ -480,6 +481,22 @@ describe('closeTabs 的可见优先落点', () => {
     // 旧规则：右边有就落右边——落的正是那枚看不见的 bh，这正是要修掉的行为
     const r = closeTabs([a1, f, bh], f.id, 'self', f.id)
     expect(r.active).toBe(bh.id)
+  })
+
+  it('归属表没登记的另一目标页签：先按 refOwner 补全，再判可见，不能把它顶到眼前', () => {
+    /*
+     * 存档里的归属表只登记了当前目标这一枚；物理右邻那枚其实属于 goalB，
+     * 只是 reconcileOwners 还没把它补进去。渲染层拿到的是补全后的表（它会把
+     * 这枚归到 goalB 并藏起来），落点若拿原表按「没登记 = 看得见」处理，
+     * 关掉当前页签就会当场打开一枚栏上没有的 goalB 文档。
+     */
+    const owners: TabOwners = { goalA: [a1.id] }
+    const reconciled = reconcileOwners(owners, [a1, bh], (nodeId) => (nodeId === 'rootB' ? 'goalB' : 'goalA'), 'goalA')
+    const prefer = (t: LearnTab) => isTabVisibleForGoal(reconciled, t.id, 'goalA')
+    expect(visibleTabs([a1, bh], reconciled, 'goalA').map((t) => t.id)).toEqual([a1.id])
+    const r = closeTabs([a1, bh], a1.id, 'self', a1.id, undefined, prefer)
+    expect(r.active).not.toBe(bh.id)
+    expect(r.tabs.some((t) => t.id === r.active && t.ref.kind === 'blank')).toBe(true)
   })
 })
 

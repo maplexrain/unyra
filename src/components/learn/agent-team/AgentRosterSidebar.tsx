@@ -157,15 +157,14 @@ export function AgentRosterSidebar({
       const bio = agentBios?.[id]?.trim()
       // 用户写了简介就优先显示它；导师没写时兜底当前目标，其余声部用注册表的职责一句话
       const idleSubtitle = bio || (id === 'tutor' ? activeGoalTitle || t(meta.blurb) : t(meta.blurb))
+      const activityText = st.activity?.text?.trim()
       return {
         id,
         label: agentNames?.[id]?.trim() || t(DEFAULT_AGENT_NAME[id]),
         subtitle: st.hasAsk
           ? t('等待你的确认')
-          : st.running
-            ? t(id === 'free' ? '回答中…' : '正在执行…')
-            : st.preview || idleSubtitle,
-        timeLabel: formatConversationTime(st.lastTime ?? 0),
+          : activityText || (st.running ? t(id === 'free' ? '回答中…' : '正在执行…') : st.preview || idleSubtitle),
+        timeLabel: formatConversationTime(st.activity?.at ?? st.lastTime ?? 0),
         count: st.count,
         unread: Math.max(0, st.unread ?? 0),
         avatarId: agentAvatars?.[id],

@@ -55,6 +55,7 @@ import { setGroupName } from '../../../learn/groupChat'
 import { useGroupChatBridge } from './useGroupChatBridge'
 import { groupAgentsOf, groupPreviewOf } from './groupAgentRoster'
 import { useGroupMentionOpen } from './useGroupMentionOpen'
+import { latestAgentVoiceActivity } from './agentVoiceActivity'
 import { AGENT_ROSTER_META, AGENT_ROSTER_ORDER, type AgentVoiceStats } from '../agent-team/agentRoster'
 import { AgentAvatarGlyph } from '../agent-team/AgentAvatarGlyph'
 import { listWorkflowRows, type WorkflowRow } from '../../../learn/workflows'
@@ -301,6 +302,13 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         ? (goalConversationsByGoal.get(tabGoalId)?.[voice] ?? EMPTY_CONVERSATIONS)
         : store.conversations.filter((c) => roleOfConversation(c) === voice)
       const latest = list[0]
+      const activity = latestAgentVoiceActivity({
+        conversations: list,
+        workRuns: workRunsAll,
+        streams: agent.streams,
+        running: agent.runningByConversation,
+      })
+      const latestTime = latest ? conversationTimeOf(latest) : 0
       const unread = list.reduce((n, c) => {
         const messages = (c.channels ?? []).filter((m) => m.kind === 'user')
         return n + unreadAgentRepliesAfter(messages, chatReadMark(`role:${c.id}:chat`))
@@ -313,14 +321,15 @@ export function AgentSlot({ deps }: { deps: AgentSlotDeps }) {
         ),
         hasAsk: list.some((c) => Boolean(agent.pendingAskByConv[c.id])),
         preview: lastMessagePreview(latest),
-        lastTime: latest ? conversationTimeOf(latest) : 0,
+        activity: activity ?? undefined,
+        lastTime: Math.max(latestTime, activity?.at ?? 0),
         count: list.length,
         unread,
       }
     }
     return out
     // agent.* 的三张表是状态槽（引用随运行变化），一并列进来
-  }, [tabGoalId, store.conversations, agent.runningByConversation, agent.pendingAskByConv, workRunsAll, goalConversationsByGoal, readRevision])
+  }, [tabGoalId, store.conversations, agent.runningByConversation, agent.pendingAskByConv, agent.streams, workRunsAll, goalConversationsByGoal, readRevision])
 
   const scheduleFocus = () => {
     window.setTimeout(() => focusAgentInput(), 30)

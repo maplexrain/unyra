@@ -97,6 +97,7 @@ export {
   dropTabs,
   focusTabsInGroup,
   goalTabsOf,
+  isTabVisibleForGoal,
   ownerOfTab,
   reconcileOwners,
   refOwner,

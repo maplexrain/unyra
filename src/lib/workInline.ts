@@ -227,6 +227,15 @@ function lastStoredActivity(session: WorkSession): WorkInlineActivity | null {
 }
 
 /**
+ * 实时 parts 里当前最值得显示的一行（「思考中 / 正在写 / 调用了什么工具」）。
+ * role 的思维流与 work 的实时流共用同一套取片段的规则。
+ */
+export function liveActivityOfParts(parts: AgentPart[], prefix: string): WorkInlineActivity | null {
+  const picked = latestVisiblePart(parts, prefix)
+  return picked ? activityOfPart(picked) : null
+}
+
+/**
  * 状态组件第二行的内容来源：实时流优先；空闲时退回该 work 最后一条 assistant
  * 回复里最后一个可见片段。只取一个片段，不拼接历史（下一步会覆盖上一步）。
  */

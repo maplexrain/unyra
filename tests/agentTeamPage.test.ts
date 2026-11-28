@@ -395,6 +395,45 @@ describe('AgentRosterSidebar 交互渲染（竖栏 / 顶部栏 / 嵌套子对话
     host.remove()
   })
 
+  it('AgentRosterSidebar 的副标题优先显示实时动态（work / 私聊），而不是笼统的「正在执行…」', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => {
+      root.render(
+        createElement(AgentRosterSidebar, {
+          mode: 'dispatcher',
+          onSelectMode: () => {},
+          activeGoalTitle: null,
+          voiceStats: {
+            tutor: {
+              running: true,
+              hasAsk: false,
+              activity: { kind: 'work', text: '调研 · 翻到第 3 页', at: 1 },
+              lastTime: 1,
+            },
+            researcher: {
+              running: false,
+              hasAsk: false,
+              activity: { kind: 'channel', text: '截图存好了，看这张', at: 2 },
+              lastTime: 2,
+            },
+          },
+        }),
+      )
+    })
+    const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+    const tutorTab = tabs.find((tab) => tab.textContent?.includes('导师龟'))
+    const researcherTab = tabs.find((tab) => tab.textContent?.includes('调研龟'))
+    expect(tutorTab?.textContent).toContain('调研 · 翻到第 3 页')
+    expect(tutorTab?.textContent).not.toContain('正在执行…')
+    expect(researcherTab?.textContent).toContain('截图存好了，看这张')
+    act(() => {
+      root.unmount()
+    })
+    host.remove()
+  })
+
   it('AgentRosterSidebar 头像右上角为有未读消息的声部显示红点', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)

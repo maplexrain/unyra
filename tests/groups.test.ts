@@ -23,6 +23,7 @@ import {
   groupIdOfTab,
   groupIdsOf,
   groupOf,
+  isTabVisibleForGoal,
   landingAfter,
   moveTab,
   normalizeDocs,
@@ -221,6 +222,20 @@ describe('关页签（closeIn / closeIds）', () => {
     docs = closeIds(docs, ['t:b'])
     expect(groupIdsOf(docs.layout)).toEqual([FIRST_GROUP])
     expect(groupOf(docs, FIRST_GROUP)?.tabs.map((t) => t.id)).toEqual(['t:a'])
+  })
+
+  it('关页签落点与页签栏同口径：补全后的归属表里查不到的页签不算可见', () => {
+    /*
+     * applyClose 先把存档里的归属表过一遍 reconcileOwners 再调这里，所以「查不到」
+     * 只会出现在补全也救不了的破数据上；此时宁可当它不可见，也不能把落点送过去。
+     */
+    const owners = { g1: ['t:a'] }
+    expect(isTabVisibleForGoal(owners, 't:a', 'g1')).toBe(true)
+    expect(isTabVisibleForGoal(owners, 't:b', 'g1')).toBe(false)
+    expect(isTabVisibleForGoal(owners, 't:b', null)).toBe(false)
+    // 公共页签始终可见；没有归属表的旧存档保持「全部可见」
+    expect(isTabVisibleForGoal({ '': ['s:settings'] }, 's:settings', 'g1')).toBe(true)
+    expect(isTabVisibleForGoal(undefined, 't:b', 'g1')).toBe(true)
   })
 })
 

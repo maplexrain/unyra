@@ -7,11 +7,20 @@
 import { Compass, GraduationCap, MessageSquare, NotebookPen, Palette, Route, Wrench, type LucideIcon } from 'lucide-react'
 import type { AgentTeamMode } from './conversationList'
 
+/** 名册副标题上的最近动态：思维 / work / 私聊消息三者按时间取最新 */
+export interface AgentVoiceActivity {
+  kind: 'mind' | 'work' | 'channel'
+  text: string
+  at: number
+}
+
 /** 一位 role 的近况统计（AgentSlot 按目标作用域算好带来，roster 联系人卡片消费） */
 export interface AgentVoiceStats {
   running: boolean
   hasAsk: boolean
   preview?: string
+  /** 最近的实时动态；有它时优先于 preview 与「正在执行…」 */
+  activity?: AgentVoiceActivity
   lastTime?: number
   count?: number
   /** 该 role 私聊里还没读的 agent 消息数（0 不画红点） */
